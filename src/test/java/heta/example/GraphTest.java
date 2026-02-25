@@ -41,6 +41,7 @@ class GraphTest {
                 filePath.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         );
 
@@ -68,6 +69,7 @@ class GraphTest {
                 filePath.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         );
 
@@ -95,6 +97,7 @@ class GraphTest {
                 filePath.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         );
 
@@ -123,6 +126,7 @@ class GraphTest {
                 filePath.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         );
 
@@ -142,7 +146,7 @@ class GraphTest {
     @Test
     void testAddVertex() throws IOException {
         // Given
-        Graph<String, Double> graph = createEmptyGraph(false);
+        Graph<String, Double> graph = createEmptyGraph(false, false);
         assertEquals(0, graph.getVertexCount());
 
         // When
@@ -159,7 +163,7 @@ class GraphTest {
     @Test
     void testAddEdge() throws IOException {
         // Given
-        Graph<String, Double> graph = createEmptyGraph(false);
+        Graph<String, Double> graph = createEmptyGraph(false, true);
         graph.addVertex("A");
         graph.addVertex("B");
         graph.addVertex("C");
@@ -182,7 +186,7 @@ class GraphTest {
     @Test
     void testRemoveVertex() throws IOException {
         // Given
-        Graph<String, Double> graph = createEmptyGraph(false);
+        Graph<String, Double> graph = createEmptyGraph(false, true);
         graph.addVertex("A");
         graph.addVertex("B");
         graph.addVertex("C");
@@ -205,7 +209,7 @@ class GraphTest {
     @Test
     void testRemoveEdge() throws IOException {
         // Given
-        Graph<String, Double> graph = createEmptyGraph(false);
+        Graph<String, Double> graph = createEmptyGraph(false,false);
         graph.addVertex("A");
         graph.addVertex("B");
         graph.addEdge("A", "B", 1.0);
@@ -224,7 +228,7 @@ class GraphTest {
     @Test
     void testSaveAndLoad() throws IOException {
         // Given
-        Graph<String, Double> originalGraph = createEmptyGraph(true);
+        Graph<String, Double> originalGraph = createEmptyGraph(true, true);
         originalGraph.addVertex("1");
         originalGraph.addVertex("2");
         originalGraph.addVertex("3");
@@ -240,6 +244,7 @@ class GraphTest {
                 tempFile.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         );
 
@@ -260,12 +265,12 @@ class GraphTest {
     @Test
     void testDirectedVsUndirected() throws IOException {
         // Given
-        Graph<String, Double> directedGraph = createEmptyGraph(true);
+        Graph<String, Double> directedGraph = createEmptyGraph(true, false);
         directedGraph.addVertex("A");
         directedGraph.addVertex("B");
         directedGraph.addEdge("A", "B", 1.0);
 
-        Graph<String, Double> undirectedGraph = createEmptyGraph(false);
+        Graph<String, Double> undirectedGraph = createEmptyGraph(false, false);
         undirectedGraph.addVertex("A");
         undirectedGraph.addVertex("B");
         undirectedGraph.addEdge("A", "B", 1.0);
@@ -299,14 +304,15 @@ class GraphTest {
                 invalidFile.toString(),
                 s -> s,
                 Double::parseDouble,
+                null,
                 " "
         ));
     }
 
     // Вспомогательные методы
 
-    private Graph<String, Double> createEmptyGraph(boolean directed) {
-        return new Graph<>(directed);
+    private Graph<String, Double> createEmptyGraph(boolean directed, boolean weighted) {
+        return new Graph<>(directed, weighted);
     }
 
     private boolean hasEdge(List<Graph.Edge<String, Double>> edges, String source, String dest, double weight) {

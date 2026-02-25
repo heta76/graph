@@ -20,17 +20,18 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
     private final Map<TVertex, Set<TVertex>> reverseAdjacency;
 
     private final boolean isDirected;
-
+    private final boolean isWeighted;
     // --- Конструкторы ---
 
-    public Graph(boolean isDirected) {
+    public Graph(boolean isDirected, boolean isWeighted) {
         this.isDirected = isDirected;
+        this.isWeighted = isWeighted;
         this.adjacencyList = new HashMap<>();
         this.reverseAdjacency = isDirected ? new HashMap<>() : null;
     }
 
-    public Graph(boolean isDirected, Iterable<TVertex> vertices) {
-        this(isDirected);
+    public Graph(boolean isDirected, Iterable<TVertex> vertices, boolean isWeighted) {
+        this(isDirected, isWeighted);
         if (vertices != null) {
             for (TVertex v : vertices) {
                 addVertexInternal(v);
@@ -39,10 +40,12 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
     }
 
     // Конструктор копии
-    public Graph(Graph<TVertex, TWeight> other) {
+    public Graph(Graph<TVertex, TWeight> other, boolean isWeighted) {
+
         if (other == null) throw new IllegalArgumentException("other cannot be null");
 
         this.isDirected = other.isDirected;
+        this.isWeighted = other.isWeighted;
         this.adjacencyList = new HashMap<>();
 
         // Глубокая копия списка смежности
@@ -62,26 +65,24 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
     }
 
     // Конструктор из файла
-    public Graph(String filePath, Function<String, TVertex> vertexParser, Function<String, TWeight> weightParser, String separator) throws IOException {
+    public Graph(String filePath, Function<String, TVertex> vertexParser, Function<String, TWeight> weightParser, TWeight defaultWeight, String separator) throws IOException {
         List<String> lines = Files.readAllLines(Paths.get(filePath));
         if (lines.isEmpty()) throw new IOException("Файл пуст.");
 
-        // 1. Определение типа графа
-        String type = lines.getFirst().trim().toLowerCase();
-        if (type.equals("directed")) {
-            this.isDirected = true;
-            this.reverseAdjacency = new HashMap<>();
-        } else if (type.equals("undirected")) {
-            this.isDirected = false;
-            this.reverseAdjacency = null;
-        } else {
-            throw new IOException("Некорректный тип графа: " + type);
-        }
+        // 1. Тип (directed/undirected) - Строка 1
+        String type = lines.get(0).trim().toLowerCase();
+        this.isDirected = type.equals("directed");
+        this.reverseAdjacency = isDirected ? new HashMap<>() : null;
         this.adjacencyList = new HashMap<>();
 
-        // 2. Парсинг вершин (строка 2)
-        if (lines.size() > 1 && !lines.get(1).isBlank()) {
-            String[] verticesParts = lines.get(1).split(separator);
+        // 2. Взвешенность (weighted/unweighted) - Строка 2
+        if (lines.size() < 2) throw new IOException("Неверный формат: отсутствует строка типа веса.");
+        String weightType = lines.get(1).trim().toLowerCase();
+        this.isWeighted = weightType.equals("weighted");
+
+        // 3. Парсинг вершин - Строка 3
+        if (lines.size() > 2 && !lines.get(2).isBlank()) {
+            String[] verticesParts = lines.get(2).split(separator);
             for (String vStr : verticesParts) {
                 if (!vStr.isBlank()) {
                     addVertexInternal(vertexParser.apply(vStr.trim()));
@@ -89,17 +90,22 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
             }
         }
 
-        // 3. Парсинг ребер (строки 3+)
-        for (int i = 2; i < lines.size(); i++) {
+        // 4. Парсинг ребер - Строки 4+
+        for (int i = 3; i < lines.size(); i++) {
             String line = lines.get(i);
             if (line.isBlank()) continue;
 
             String[] parts = line.split(separator);
-            if (parts.length < 3) throw new IOException("Ошибка формата в строке " + (i + 1));
-
             TVertex v1 = vertexParser.apply(parts[0].trim());
             TVertex v2 = vertexParser.apply(parts[1].trim());
-            TWeight w = weightParser.apply(parts[2].trim());
+
+            TWeight w;
+            if (isWeighted) {
+                if (parts.length < 3) throw new IOException("Строка " + (i + 1) + ": ожидался вес.");
+                w = weightParser.apply(parts[2].trim());
+            } else {
+                w = defaultWeight; // Используем дефолт (например, 1.0)
+            }
 
             addEdge(v1, v2, w);
         }
@@ -111,6 +117,9 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
 
     @Override
     public int getVertexCount() { return adjacencyList.size(); }
+
+    @Override
+    public boolean isWeighted() { return isWeighted; }
 
     private void addVertexInternal(TVertex vertex) {
         adjacencyList.putIfAbsent(vertex, new HashMap<>());
@@ -213,32 +222,39 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
     public void saveToFile(String filePath, String separator) throws IOException {
         try (PrintWriter writer = new PrintWriter(new FileWriter(filePath))) {
             writer.println(isDirected ? "directed" : "undirected");
+            writer.println(isWeighted ? "weighted" : "unweighted");
 
-            // Запись вершин
-            StringJoiner joiner = new StringJoiner(separator);
-            for (TVertex v : adjacencyList.keySet()) {
-                joiner.add(v.toString());
-            }
-            writer.println(joiner.toString());
+            // Вершины
+            StringJoiner vJoiner = new StringJoiner(separator);
+            for (TVertex v : adjacencyList.keySet()) vJoiner.add(v.toString());
+            writer.println(vJoiner.toString());
 
-            // Запись ребер
-            Set<String> visitedEdges = new HashSet<>();
+            // Ребра
+            Set<String> visited = new HashSet<>();
             for (var entry : adjacencyList.entrySet()) {
                 TVertex u = entry.getKey();
                 for (var edge : entry.getValue().entrySet()) {
                     TVertex v = edge.getKey();
-                    TWeight w = edge.getValue();
-
                     if (!isDirected) {
-                        String pair1 = u.toString() + "-" + v.toString();
-                        String pair2 = v.toString() + "-" + u.toString();
-                        if (visitedEdges.contains(pair1) || visitedEdges.contains(pair2)) continue;
-                        visitedEdges.add(pair1);
+                        String p1 = u + "-" + v, p2 = v + "-" + u;
+                        if (visited.contains(p1) || visited.contains(p2)) continue;
+                        visited.add(p1);
                     }
-                    writer.println(u + separator + v + separator + w);
+
+                    if (isWeighted) {
+                        writer.println(u + separator + v + separator + edge.getValue());
+                    } else {
+                        writer.println(u + separator + v);
+                    }
                 }
             }
         }
+    }
+
+    @Override
+    public Map<TVertex, java.util.Map<TVertex, TWeight>> getAdjacencyStructure() {
+        // Возвращаем копию или unmodifiable view для безопасности
+        return Collections.unmodifiableMap(adjacencyList);
     }
 
     // Вспомогательный класс для списка ребер

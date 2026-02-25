@@ -7,6 +7,7 @@ public interface IGraph<TVertex, TWeight> {
     // Основные свойства
     boolean isDirected();
     int getVertexCount();
+    boolean isWeighted();
 
     // Модификация
     void addVertex(TVertex vertex);
@@ -17,4 +18,5 @@ public interface IGraph<TVertex, TWeight> {
     // Работа с данными
     List<Graph.Edge<TVertex, TWeight>> getEdgeList();
     void saveToFile(String filePath, String separator) throws IOException;
+    java.util.Map<TVertex, java.util.Map<TVertex, TWeight>> getAdjacencyStructure();
 }
