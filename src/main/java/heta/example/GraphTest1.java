@@ -8,7 +8,7 @@ import java.util.List;
 public class GraphTest1 {
     public static void main(String[] args) {
         // Папка с тестовыми файлами (измените, если файлы лежат в другом месте)
-        String testFolder = "A:\\Java\\Graphs\\src\\main\\java\\heta\\example";
+        String testFolder = "C:\\Users\\user\\Downloads\\demo\\graph\\src\\main\\java\\heta\\example";
 
         // Массив тестовых файлов
         String[] testFiles = {

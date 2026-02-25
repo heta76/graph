@@ -67,7 +67,7 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         if (lines.isEmpty()) throw new IOException("Файл пуст.");
 
         // 1. Определение типа графа
-        String type = lines.get(0).trim().toLowerCase();
+        String type = lines.getFirst().trim().toLowerCase();
         if (type.equals("directed")) {
             this.isDirected = true;
             this.reverseAdjacency = new HashMap<>();
@@ -130,6 +130,14 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
 
     @Override
     public void addEdge(TVertex source, TVertex destination, TWeight weight) {
+        // Проверка на петлю в неориентированном графе
+        if (!isDirected && source.equals(destination)) {
+            throw new IllegalArgumentException(
+                    "Невозможно создать петлю в неориентированном графе: вершина " + source +
+                            " не может быть соединена сама с собой, так как это приведёт к мультиграфу."
+            );
+        }
+
         if (!adjacencyList.containsKey(source) || !adjacencyList.containsKey(destination)) {
             throw new NoSuchElementException("Одна из вершин не найдена.");
         }

@@ -24,8 +24,9 @@ public class Main {
                     case "3" -> removeVertex();
                     case "4" -> removeEdge();
                     case "5" -> showAdjacencyList();
-                    case "6" -> saveToFile();
-                    case "7" -> loadFromFile();
+                    case "6" -> showDirection();
+                    case "7" -> saveToFile();
+                    case "8" -> loadFromFile();
                     case "0" -> exit = true;
                     default -> System.out.println("Неверный ввод.");
                 }
@@ -46,6 +47,15 @@ public class Main {
         String v = scanner.nextLine();
         graph.addVertex(v);
         System.out.println("Вершина добавлена.");
+    }
+
+    private static void showDirection() {
+        if (graph.isDirected()){
+            System.out.println("directed");
+        }
+        else {
+            System.out.println("undirected");
+        }
     }
 
     private static void addEdge() {
@@ -123,8 +133,9 @@ public class Main {
         System.out.println("3. Удалить вершину");
         System.out.println("4. Удалить ребро");
         System.out.println("5. Показать список ребер");
-        System.out.println("6. Сохранить в файл");
-        System.out.println("7. Загрузить из файла (пересоздать)");
+        System.out.println("6. Вывести тип графа");
+        System.out.println("7. Сохранить в файл");
+        System.out.println("8. Загрузить из файла (пересоздать)");
         System.out.println("0. Выход");
         System.out.print("> ");
     }
