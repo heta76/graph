@@ -8,7 +8,7 @@ import java.util.List;
 public class GraphTest1 {
     public static void main(String[] args) {
         // Папка с тестовыми файлами (измените, если файлы лежат в другом месте)
-        String testFolder = "C:\\Users\\user\\Downloads\\demo\\graph\\src\\main\\java\\heta\\example";
+        String testFolder = "src/main/java/heta/example";
 
         // Массив тестовых файлов
         String[] testFiles = {
@@ -30,6 +30,7 @@ public class GraphTest1 {
                         filePath,
                         s -> s,               // парсер вершин: строку оставляем как есть
                         Double::parseDouble,   // парсер весов: преобразуем в Double
+                        null,
                         " "                    // разделитель (пробел)
                 );
 
@@ -101,6 +102,7 @@ public class GraphTest1 {
                         outputFile,
                         s -> s,
                         Double::parseDouble,
+                        null,
                         " "
                 );
                 System.out.println("OK");
