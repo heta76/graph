@@ -23,4 +23,5 @@ public interface IGraph<TVertex, TWeight> {
     java.util.Map<TVertex, java.util.Map<TVertex, TWeight>> getAdjacencyStructure();
     Set<TVertex> getAdjacentVertices(TVertex vertex);
     Set<TVertex> getIncomingVertices(TVertex vertex);
+    IGraph<TVertex, TWeight> getTranspose();
 }

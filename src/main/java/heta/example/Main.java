@@ -84,7 +84,7 @@ public class Main {
                     case "8" -> startupMenu(); // Позволяет пересоздать/перезагрузить
                     case "9" -> showOutDegree();
                     case "10" -> showAllAdjacentVertices();
-//                    case "11" -> showIncomingVertices();
+                    case "11" -> saveTransposeToFile();
                     case "0" -> exit = true;
                     default -> System.out.println("Неверный ввод.");
                 }
@@ -282,6 +282,27 @@ public class Main {
         showIncomingVertices(v);
     }
 
+    private static void saveTransposeToFile() {
+        if (!graph.isDirected()) {
+            System.out.println("Граф не является ориентированным — обращение совпадает с исходным (сохраните обычный граф).");
+            return;
+        }
+
+        System.out.print("Путь для сохранения обращённого графа: ");
+        String out = scanner.nextLine();
+        try {
+
+            IGraph<String, Double> trans = graph.getTranspose();
+            trans.saveToFile(out, " ");
+
+            System.out.println("Обращённый граф сохранён в " + out);
+        } catch (IOException e) {
+            System.err.println("Ошибка при сохранении: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Ошибка: " + e.getMessage());
+        }
+    }
+
     private static void printMenu() {
         System.out.println("\n--- Управление графом ---");
         System.out.println("1. Добавить вершину");
@@ -294,7 +315,7 @@ public class Main {
         System.out.println("8. Пересоздать / Загрузить другой");
         System.out.println("9. Полустепень исхода вершины");
         System.out.println("10. Смежные вершины");
-//        System.out.println("11. Смежные входящие вершины");
+        System.out.println("11. Сохранить обращённый орграф в файл");
         System.out.println("0. Выход");
         System.out.print("> ");
     }

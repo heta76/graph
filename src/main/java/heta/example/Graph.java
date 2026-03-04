@@ -251,6 +251,14 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         }
     }
 
+
+    // Сохраняет обращённый граф (transpose) в файл.
+    public void saveTransposeToFile(String filePath, String separator) throws IOException {
+        IGraph<TVertex, TWeight> trans = getTranspose();
+        // saveToFile определён в IGraph, поэтому можно вызывать напрямую
+        trans.saveToFile(filePath, separator);
+    }
+
     @Override
     public int getOutDegree(TVertex vertex) {
 
@@ -290,6 +298,36 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
     public Map<TVertex, java.util.Map<TVertex, TWeight>> getAdjacencyStructure() {
         // Возвращаем копию или unmodifiable view для безопасности
         return Collections.unmodifiableMap(adjacencyList);
+    }
+
+
+    @Override
+    public IGraph<TVertex, TWeight> getTranspose() {
+        // Если граф неориентированный — обращение совпадает с ним (возврат копии)
+        if (!isDirected) {
+            return new Graph<>(this, this.isWeighted);
+        }
+
+        // Создаём новый ориентированный граф с теми же свойствами
+        Graph<TVertex, TWeight> transposed = new Graph<>(true, this.isWeighted);
+
+        // Добавляем все вершины (используем внутренний метод, т.к. мы внутри класса)
+        for (TVertex v : adjacencyList.keySet()) {
+            transposed.addVertexInternal(v);
+        }
+
+        // Для каждой дуги u -> v добавляем v -> u с тем же весом
+        for (var entry : adjacencyList.entrySet()) {
+            TVertex u = entry.getKey();
+            for (var edge : entry.getValue().entrySet()) {
+                TVertex v = edge.getKey();
+                TWeight w = edge.getValue();
+                // Добавляем перевёрнутое ребро
+                transposed.addEdge(v, u, w);
+            }
+        }
+
+        return transposed;
     }
 
 
