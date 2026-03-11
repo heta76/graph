@@ -1,11 +1,12 @@
-directed
-unweighted
-V6 V7 V1 V2 V3 V4 V5
-V6 V1
-V7 V7
-V1 V1
-V1 V2
-V2 V3
-V3 V4
-V4 V5
-V5 V6
+undirected
+weighted
+A B C D E F G H
+A B 1.0
+B C 2.0
+C D 3.0
+D E 4.0
+E F 5.0
+F G 6.0
+G H 7.0
+H A 8.0
+C F 9.0

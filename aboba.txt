@@ -1,0 +1,9 @@
+undirected
+unweighted
+Center Node1 Node2 Node3 Node4 Far1 Far2
+Center Node1
+Center Node2
+Node1 Node3
+Node1 Far1
+Far1 Far2
+Node4 Node2

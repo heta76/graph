@@ -10,7 +10,7 @@ public interface IGraph<TVertex, TWeight> {
     int getVertexCount();
     boolean isWeighted();
     int getOutDegree(TVertex vertex);
-
+    TVertex findVertexToRemoveToMakeTree();
     // Модификация
     void addVertex(TVertex vertex);
     void addEdge(TVertex source, TVertex destination, TWeight weight);
@@ -24,4 +24,6 @@ public interface IGraph<TVertex, TWeight> {
     Set<TVertex> getAdjacentVertices(TVertex vertex);
     Set<TVertex> getIncomingVertices(TVertex vertex);
     IGraph<TVertex, TWeight> getTranspose();
+
+
 }

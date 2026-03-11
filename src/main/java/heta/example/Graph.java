@@ -21,8 +21,34 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
 
     private final boolean isDirected;
     private final boolean isWeighted;
-    // --- Конструкторы ---
 
+
+    private class DSU<T> {
+        private final Map<T, T> parent = new HashMap<>();
+
+        public DSU(Collection<T> elements) {
+            for (T e : elements) parent.put(e, e);
+        }
+
+        public T find(T i) {
+            if (parent.get(i).equals(i)) return i;
+            T root = find(parent.get(i));
+            parent.put(i, root); // Сжатие путей
+            return root;
+        }
+
+        public boolean union(T i, T j) {
+            T rootI = find(i);
+            T rootJ = find(j);
+            if (!rootI.equals(rootJ)) {
+                parent.put(rootI, rootJ);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    // --- Конструкторы ---
     public Graph(boolean isDirected, boolean isWeighted) {
         this.isDirected = isDirected;
         this.isWeighted = isWeighted;
@@ -330,7 +356,124 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         return transposed;
     }
 
+    @Override
+    public TVertex findVertexToRemoveToMakeTree() {
+        if (isDirected) {
+            throw new UnsupportedOperationException("Задача определена только для неориентированного графа.");
+        }
 
+        int V = adjacencyList.size();
+        if (V <= 1) return null; // Из пустого графа или 1 вершины дерево не сделать
+
+        // Важно: getEdgeList() для неориентированного графа возвращает каждое ребро один раз
+        int E = getEdgeList().size();
+        int neededDegree = E - V + 2;
+
+        for (TVertex v : adjacencyList.keySet()) {
+            int degree = adjacencyList.get(v).size();
+
+            // Сначала быстрая проверка по количеству ребер
+            if (degree == neededDegree) {
+                // Затем проверка на связность оставшейся части
+                if (isConnectedWithoutVertex(v)) {
+                    return v; // Нашли подходящую вершину
+                }
+            }
+        }
+        return null;
+    }
+
+
+
+    private boolean isConnectedWithoutVertex(TVertex removed) {
+
+        Set<TVertex> visited = new HashSet<>();
+
+        TVertex start = null;
+
+        for (TVertex v : adjacencyList.keySet()) {
+            if (!v.equals(removed)) {
+                start = v;
+                break;
+            }
+        }
+
+        if (start == null) return true;
+
+        dfsWithoutVertex(start, removed, visited);
+
+        return visited.size() == adjacencyList.size() - 1;
+    }
+
+    private void dfsWithoutVertex(TVertex v, TVertex removed, Set<TVertex> visited) {
+
+        visited.add(v);
+
+        for (TVertex neighbor : adjacencyList.get(v).keySet()) {
+
+            if (neighbor.equals(removed)) continue;
+
+            if (!visited.contains(neighbor)) {
+                dfsWithoutVertex(neighbor, removed, visited);
+            }
+        }
+    }
+
+
+    public double getRadius() {
+        // Радиус обычно ищется для связных графов.
+        // Если граф несвязный, расстояние до некоторых вершин будет бесконечным.
+
+        List<Integer> eccentricities = new ArrayList<>();
+
+        for (TVertex v : adjacencyList.keySet()) {
+            int eccentricity = calculateEccentricity(v);
+            // Если вершина изолирована или не до всех можно добраться,
+            // обычно возвращают бесконечность или обрабатывают отдельно.
+            if (eccentricity != -1) {
+                eccentricities.add(eccentricity);
+            }
+        }
+
+        if (eccentricities.isEmpty()) return 0;
+
+        return Collections.min(eccentricities);
+    }
+
+    private int calculateEccentricity(TVertex startNode) {
+        Map<TVertex, Integer> distances = new HashMap<>();
+        Queue<TVertex> queue = new LinkedList<>();
+
+        queue.add(startNode);
+        distances.put(startNode, 0);
+
+        int maxDist = 0;
+
+        while (!queue.isEmpty()) {
+            TVertex current = queue.poll();
+            int currentDist = distances.get(current);
+
+            if (currentDist > maxDist) {
+                maxDist = currentDist;
+            }
+
+            // Перебираем соседей
+            for (TVertex neighbor : adjacencyList.get(current).keySet()) {
+                if (!distances.containsKey(neighbor)) {
+                    distances.put(neighbor, currentDist + 1);
+                    queue.add(neighbor);
+                }
+            }
+        }
+
+        // Проверка на связность: если посетили меньше вершин, чем есть в графе
+        if (distances.size() < adjacencyList.size()) {
+            // В теории графов для несвязных графов радиус часто считается бесконечным
+            return Integer.MAX_VALUE;
+        }
+
+        return maxDist;
+    }
 
     // Вспомогательный класс для списка ребер
     public static class Edge<TVertex, TWeight> {
@@ -361,5 +504,41 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
             }
         }
         return edges;
+    }
+
+    public IGraph<TVertex, TWeight> getKruskalMST() {
+        if (isDirected) {
+            throw new UnsupportedOperationException("Каркас минимального веса обычно ищется для неориентированных графов.");
+        }
+
+        // 1. Создаем пустой неориентированный взвешенный граф для результата
+        Graph<TVertex, TWeight> mst = new Graph<>(false, true);
+        for (TVertex v : adjacencyList.keySet()) {
+            mst.addVertex(v);
+        }
+
+        // 2. Получаем все ребра и сортируем их по весу
+        List<Edge<TVertex, TWeight>> edges = getEdgeList();
+        edges.sort(Comparator.comparingDouble(e -> ((Number) e.weight).doubleValue()));
+
+        // 3. Используем DSU для объединения компонентов
+        DSU<TVertex> dsu = new DSU<>(adjacencyList.keySet());
+        int edgesAdded = 0;
+        double totalWeight = 0;
+
+        for (Edge<TVertex, TWeight> edge : edges) {
+            if (dsu.union(edge.source, edge.dest)) {
+                mst.addEdge(edge.source, edge.dest, edge.weight);
+                totalWeight += ((Number) edge.weight).doubleValue();
+                edgesAdded++;
+
+                // Если добавили V-1 ребро, каркас готов
+                if (edgesAdded == getVertexCount() - 1) break;
+            }
+        }
+
+        // Можно вывести вес в консоль для информации
+        System.out.println("Общий вес остовного дерева: " + totalWeight);
+        return mst;
     }
 }

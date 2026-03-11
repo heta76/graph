@@ -85,6 +85,9 @@ public class Main {
                     case "9" -> showOutDegree();
                     case "10" -> showAllAdjacentVertices();
                     case "11" -> saveTransposeToFile();
+                    case "12" -> checkTreeAfterRemovingVertex();
+                    case "13" -> showGraphRadius();
+                    case "14" -> buildMST();
                     case "0" -> exit = true;
                     default -> System.out.println("Неверный ввод.");
                 }
@@ -221,15 +224,6 @@ public class Main {
     }
 
     private static void showAdjacentVertices(String v) {
-
-//        if (!graph.isDirected()) {
-//            System.out.println("Граф не является ориентированным.");
-//            return;
-//        }
-//
-//        System.out.print("Введите вершину: ");
-//        String v = scanner.nextLine();
-
         try {
             var neighbors = graph.getAdjacentVertices(v);
 
@@ -246,14 +240,6 @@ public class Main {
     }
 
     private static void showIncomingVertices(String v) {
-//        if (!graph.isDirected()) {
-//            System.out.println("Граф не является ориентированным.");
-//            return;
-//        }
-//
-//        System.out.print("Введите вершину: ");
-//        String v = scanner.nextLine();
-
         try {
             var neighbors = graph.getIncomingVertices(v);
 
@@ -303,6 +289,61 @@ public class Main {
         }
     }
 
+    private static void checkTreeAfterRemovingVertex() {
+        if (graph.isDirected()) {
+            System.out.println("Задание определено только для неориентированного графа.");
+            return;
+        }
+
+        // Если метод добавлен в интерфейс, приведение типа не нужно
+        String vertexName = ((Graph<String, Double>) graph).findVertexToRemoveToMakeTree();
+
+        if (vertexName != null) {
+            System.out.println("Можно удалить вершину так, что получится дерево.");
+            System.out.println("Кандидат для удаления: " + vertexName);
+        } else {
+            System.out.println("Невозможно получить дерево удалением одной вершины.");
+        }
+    }
+
+    private static void buildMST() {
+        if (graph.isDirected()) {
+            System.out.println("Ошибка: Алгоритм Краскала предназначен для неориентированных графов.");
+            return;
+        }
+
+        try {
+            // Вызываем метод
+            IGraph<String, Double> mst = ((Graph<String, Double>) graph).getKruskalMST();
+
+            System.out.println("Каркас минимального веса построен.");
+            System.out.println("Хотите заменить текущий граф на полученный остов? (y/n)");
+            if (scanner.nextLine().equalsIgnoreCase("y")) {
+                graph = mst;
+                isDirty = true;
+                System.out.println("Текущий граф заменен на MST.");
+            }
+        } catch (Exception e) {
+            System.out.println("Ошибка: " + e.getMessage());
+        }
+    }
+
+
+
+    private static void showGraphRadius() {
+        try {
+            double radius = ((Graph<String, Double>) graph).getRadius();
+
+            if (radius == Integer.MAX_VALUE) {
+                System.out.println("Граф несвязный, радиус определить невозможно (равен бесконечности).");
+            } else {
+                System.out.println("Радиус графа: " + (int)radius);
+            }
+        } catch (Exception e) {
+            System.out.println("Ошибка при расчете: " + e.getMessage());
+        }
+    }
+
     private static void printMenu() {
         System.out.println("\n--- Управление графом ---");
         System.out.println("1. Добавить вершину");
@@ -316,6 +357,11 @@ public class Main {
         System.out.println("9. Полустепень исхода вершины");
         System.out.println("10. Смежные вершины");
         System.out.println("11. Сохранить обращённый орграф в файл");
+        System.out.println("12. Проверить, можно ли из графа удалить какую-либо вершину так, чтобы получилось дерево.");
+        System.out.println("13. Найти радиус графа — минимальный из эксцентриситетов его вершин.");
+        if (!graph.isDirected() && graph.isWeighted()) {
+            System.out.println("14. Найти каркас минимального веса ");
+        }
         System.out.println("0. Выход");
         System.out.print("> ");
     }
