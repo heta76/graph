@@ -1,5 +1,6 @@
 package heta.example;
 
+import java.util.List;
 import java.util.Scanner;
 import java.io.IOException;
 import java.util.StringJoiner;
@@ -87,7 +88,10 @@ public class Main {
                     case "11" -> saveTransposeToFile();
                     case "12" -> checkTreeAfterRemovingVertex();
                     case "13" -> showGraphRadius();
-                    case "14" -> buildMST();
+                    case "14" -> showDijkstraPaths();
+                    case "15" -> showBellmanFordPaths();
+                    case "16" -> showFloydWarshall();
+                    case "17" -> buildMST();
                     case "0" -> exit = true;
                     default -> System.out.println("Неверный ввод.");
                 }
@@ -344,6 +348,160 @@ public class Main {
         }
     }
 
+    private static void showDijkstraPaths() {
+        if (!graph.isWeighted()) {
+            System.out.println("Задача требует взвешенный граф.");
+            return;
+        }
+
+        System.out.print("Введите вершину u: ");
+        String u = scanner.nextLine();
+
+        try {
+            Graph<String, Double> g = (Graph<String, Double>) graph;
+            var res = graph.dijkstra(u);
+
+            for (String v : graph.getAdjacencyStructure().keySet()) {
+                double d = res.getDistance(v);
+                if (Double.isInfinite(d)) {
+                    System.out.println(u + " -> " + v + ": пути нет");
+                } else {
+                    System.out.println(
+                            u + " -> " + v + " = " + d +
+                                    " | путь: " + String.join(" -> ", res.buildPathTo(v))
+                    );
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Ошибка: " + e.getMessage());
+        }
+    }
+
+    private static void showBellmanFordPaths() {
+        if (!graph.isWeighted()) {
+            System.out.println("Задача требует взвешенный граф.");
+            return;
+        }
+
+        System.out.print("Введите вершину u1: ");
+        String u1 = scanner.nextLine();
+
+        System.out.print("Введите вершину u2: ");
+        String u2 = scanner.nextLine();
+
+        System.out.print("Введите вершину v: ");
+        String v = scanner.nextLine();
+
+        try {
+            Graph<String, Double> g = (Graph<String, Double>) graph;
+
+            var r1 = g.bellmanFord(u1);
+            double d1 = r1.getDistance(v);
+            if (Double.isInfinite(d1)) {
+                System.out.println("Из " + u1 + " до " + v + " пути нет.");
+            } else {
+                System.out.println(
+                        u1 + " -> " + v + " = " + d1 +
+                                " | путь: " + String.join(" -> ", r1.buildPathTo(v))
+                );
+            }
+
+            var r2 = g.bellmanFord(u2);
+            double d2 = r2.getDistance(v);
+            if (Double.isInfinite(d2)) {
+                System.out.println("Из " + u2 + " до " + v + " пути нет.");
+            } else {
+                System.out.println(
+                        u2 + " -> " + v + " = " + d2 +
+                                " | путь: " + String.join(" -> ", r2.buildPathTo(v))
+                );
+            }
+
+        } catch (Exception e) {
+            System.out.println("Ошибка: " + e.getMessage());
+        }
+    }
+
+    private static void showFloydWarshall() {
+        if (!graph.isWeighted()) {
+            System.out.println("Задача требует взвешенный граф.");
+            return;
+        }
+
+        try {
+            // Теперь вызываем метод напрямую из интерфейса без приведения типов
+            var res = graph.floydWarshall();
+            var vertices = res.getVertices();
+
+            // 1. Отрисовка таблицы
+            int colWidth = 10;
+            System.out.print(" ".repeat(6));
+            for (String v : vertices) System.out.printf("%" + colWidth + "s", v);
+            System.out.println();
+
+            for (String from : vertices) {
+                System.out.printf("%6s", from);
+                for (String to : vertices) {
+                    double d = res.getDistance(from, to);
+                    String cell = formatDistance(d);
+                    System.out.printf("%" + colWidth + "s", cell);
+                }
+                System.out.println();
+            }
+
+            if (res.hasNegativeCycle()) {
+                System.out.println("\n[!] ВНИМАНИЕ: В графе обнаружены отрицательные циклы.");
+                System.out.println("Расстояния до некоторых вершин бесконечно уменьшаются (-∞).");
+            }
+
+            // 2. Интерактивный поиск пути
+            System.out.println("\n--- Детализация пути ---");
+            while (true) {
+                System.out.print("Введите начальную и конечную вершины через пробел (или 'exit' для выхода): ");
+                String input = scanner.nextLine();
+                if (input.equalsIgnoreCase("exit")) break;
+
+                String[] parts = input.split("\\s+");
+                if (parts.length != 2) {
+                    System.out.println("Нужно ввести ровно две вершины.");
+                    continue;
+                }
+
+                String start = parts[0];
+                String end = parts[1];
+
+                if (!vertices.contains(start) || !vertices.contains(end)) {
+                    System.out.println("Одна или обе вершины не найдены в графе.");
+                    continue;
+                }
+
+                double dist = res.getDistance(start, end);
+                List<String> path = res.getPath(start, end);
+
+                System.out.println("Расстояние: " + formatDistance(dist));
+                if (path == null) {
+                    System.out.println("Путь: Не определен (проходит через отрицательный цикл)");
+                } else if (path.isEmpty()) {
+                    System.out.println("Путь: Не существует");
+                } else {
+                    System.out.println("Путь: " + String.join(" -> ", path));
+                }
+                System.out.println();
+            }
+
+        } catch (Exception e) {
+            System.out.println("Ошибка: " + e.getMessage());
+        }
+    }
+
+    // Вспомогательный метод для красивого вывода чисел
+    private static String formatDistance(double d) {
+        if (d == Double.POSITIVE_INFINITY) return "∞";
+        if (d == Double.NEGATIVE_INFINITY) return "-∞";
+        if (d == (long) d) return String.format("%d", (long) d);
+        return String.format("%.2f", d);
+    }
+
     private static void printMenu() {
         System.out.println("\n--- Управление графом ---");
         System.out.println("1. Добавить вершину");
@@ -359,8 +517,11 @@ public class Main {
         System.out.println("11. Сохранить обращённый орграф в файл");
         System.out.println("12. Проверить, можно ли из графа удалить какую-либо вершину так, чтобы получилось дерево.");
         System.out.println("13. Найти радиус графа — минимальный из эксцентриситетов его вершин.");
+        System.out.println("14. Дейкстра: кратчайшие пути из вершины u");
+        System.out.println("15. Беллман-Форд: кратчайшие пути из u1 и u2 до v");
+        System.out.println("16. Флойд: длины кратчайших путей для всех пар");
         if (!graph.isDirected() && graph.isWeighted()) {
-            System.out.println("14. Найти каркас минимального веса ");
+            System.out.println("17. Найти каркас минимального веса ");
         }
         System.out.println("0. Выход");
         System.out.print("> ");

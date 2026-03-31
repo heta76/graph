@@ -356,6 +356,135 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         return transposed;
     }
 
+    // --- Результаты кратчайших путей ---
+
+    public static class ShortestPathResult<V> {
+        private final V source;
+        private final Map<V, Double> distances;
+        private final Map<V, V> predecessors;
+
+        public ShortestPathResult(V source, Map<V, Double> distances, Map<V, V> predecessors) {
+            this.source = source;
+            this.distances = Collections.unmodifiableMap(new LinkedHashMap<>(distances));
+            this.predecessors = Collections.unmodifiableMap(new LinkedHashMap<>(predecessors));
+        }
+
+        public V getSource() {
+            return source;
+        }
+
+        public Map<V, Double> getDistances() {
+            return distances;
+        }
+
+        public double getDistance(V vertex) {
+            return distances.getOrDefault(vertex, Double.POSITIVE_INFINITY);
+        }
+
+        public List<V> buildPathTo(V target) {
+            Double d = distances.get(target);
+            if (d == null || Double.isInfinite(d)) {
+                return Collections.emptyList();
+            }
+
+            LinkedList<V> path = new LinkedList<>();
+            V current = target;
+
+            while (current != null) {
+                path.addFirst(current);
+                if (current.equals(source)) {
+                    return path;
+                }
+                current = predecessors.get(current);
+            }
+
+            return Collections.emptyList();
+        }
+    }
+
+    public static class FloydResult<V> {
+        private final List<V> vertices;
+        private final Map<V, Map<V, Double>> distances;
+//        private final boolean hasNegativeCycle;
+        private final Map<V, Map<V, V>> next;
+
+        public FloydResult(List<V> vertices, Map<V, Map<V, Double>> distances, Map<V, Map<V, V>> next) {
+            this.vertices = vertices;
+            this.distances = distances;
+            this.next = next;
+        }
+
+        public List<V> getVertices() {
+            return vertices;
+        }
+
+        public List<V> getPath(V from, V to) {
+            if (distances.get(from).get(to) == Double.POSITIVE_INFINITY) return Collections.emptyList();
+            if (distances.get(from).get(to) == Double.NEGATIVE_INFINITY) return null; // Сигнал об отр. цикле
+
+            List<V> path = new ArrayList<>();
+            V current = from;
+            while (current != null) {
+                path.add(current);
+                if (current.equals(to)) break;
+                current = next.get(current).get(to);
+                if (path.size() > vertices.size()) return null; // Защита от зацикливания
+            }
+            return path;
+        }
+
+        public Map<V, Map<V, Double>> getDistances() {
+            return distances;
+        }
+
+        public boolean hasNegativeCycle() {
+            for (V v : vertices) {
+                if (getDistance(v, v) < 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public double getDistance(V from, V to) {
+            Map<V, Double> row = distances.get(from);
+            if (row == null) return Double.POSITIVE_INFINITY;
+            return row.getOrDefault(to, Double.POSITIVE_INFINITY);
+        }
+    }
+
+// --- Вспомогательные методы ---
+
+    private double weightToDouble(TWeight weight) {
+        if (weight instanceof Number num) {
+            return num.doubleValue();
+        }
+        throw new IllegalArgumentException("Веса должны быть числами (Number).");
+    }
+
+    private boolean hasNegativeEdge() {
+        for (var entry : adjacencyList.entrySet()) {
+            for (var edge : entry.getValue().entrySet()) {
+                if (weightToDouble(edge.getValue()) < 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static class PQNode<V> {
+        final V vertex;
+        final double distance;
+
+        PQNode(V vertex, double distance) {
+            this.vertex = vertex;
+            this.distance = distance;
+        }
+    }
+
+
+
     @Override
     public TVertex findVertexToRemoveToMakeTree() {
         if (isDirected) {
@@ -541,4 +670,189 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         System.out.println("Общий вес остовного дерева: " + totalWeight);
         return mst;
     }
+
+    public ShortestPathResult<TVertex> dijkstra(TVertex source) {
+        if (!adjacencyList.containsKey(source)) {
+            throw new NoSuchElementException("Вершина не найдена: " + source);
+        }
+
+        if (hasNegativeEdge()) {
+            throw new UnsupportedOperationException(
+                    "Алгоритм Дейкстры нельзя применять к графу с отрицательными весами."
+            );
+        }
+
+        Map<TVertex, Double> dist = new LinkedHashMap<>();
+        Map<TVertex, TVertex> prev = new LinkedHashMap<>();
+
+        for (TVertex v : adjacencyList.keySet()) {
+            dist.put(v, Double.POSITIVE_INFINITY);
+            prev.put(v, null);
+        }
+
+        PriorityQueue<PQNode<TVertex>> pq =
+                new PriorityQueue<>(Comparator.comparingDouble(n -> n.distance));
+
+        dist.put(source, 0.0);
+        pq.add(new PQNode<>(source, 0.0));
+
+        while (!pq.isEmpty()) {
+            PQNode<TVertex> cur = pq.poll();
+
+            if (cur.distance > dist.get(cur.vertex)) {
+                continue;
+            }
+
+            for (var edge : adjacencyList.get(cur.vertex).entrySet()) {
+                TVertex to = edge.getKey();
+                double w = weightToDouble(edge.getValue());
+                double nd = cur.distance + w;
+
+                if (nd < dist.get(to)) {
+                    dist.put(to, nd);
+                    prev.put(to, cur.vertex);
+                    pq.add(new PQNode<>(to, nd));
+                }
+            }
+        }
+
+        return new ShortestPathResult<>(source, dist, prev);
+    }
+
+
+    public ShortestPathResult<TVertex> bellmanFord(TVertex source) {
+        if (!adjacencyList.containsKey(source)) {
+            throw new NoSuchElementException("Вершина не найдена: " + source);
+        }
+
+        Map<TVertex, Double> dist = new LinkedHashMap<>();
+        Map<TVertex, TVertex> prev = new LinkedHashMap<>();
+
+        for (TVertex v : adjacencyList.keySet()) {
+            dist.put(v, Double.POSITIVE_INFINITY);
+            prev.put(v, null);
+        }
+
+        dist.put(source, 0.0);
+
+        int V = adjacencyList.size();
+
+        for (int i = 1; i < V; i++) {
+            boolean changed = false;
+
+            for (var entry : adjacencyList.entrySet()) {
+                TVertex u = entry.getKey();
+                double du = dist.get(u);
+
+                if (Double.isInfinite(du)) continue;
+
+                for (var edge : entry.getValue().entrySet()) {
+                    TVertex v = edge.getKey();
+                    double w = weightToDouble(edge.getValue());
+
+                    if (du + w < dist.get(v)) {
+                        dist.put(v, du + w);
+                        prev.put(v, u);
+                        changed = true;
+                    }
+                }
+            }
+
+            if (!changed) break;
+        }
+
+        // Проверка на отрицательный цикл
+        for (var entry : adjacencyList.entrySet()) {
+            TVertex u = entry.getKey();
+            double du = dist.get(u);
+
+            if (Double.isInfinite(du)) continue;
+
+            for (var edge : entry.getValue().entrySet()) {
+                TVertex v = edge.getKey();
+                double w = weightToDouble(edge.getValue());
+
+                if (du + w < dist.get(v)) {
+                    throw new IllegalStateException("В графе есть цикл отрицательного веса.");
+                }
+            }
+        }
+
+        return new ShortestPathResult<>(source, dist, prev);
+    }
+
+
+
+    public FloydResult<TVertex> floydWarshall() {
+        if (adjacencyList.isEmpty()) throw new IllegalStateException("Граф пуст.");
+
+        List<TVertex> vertices = new ArrayList<>(adjacencyList.keySet());
+        int n = vertices.size();
+        Map<TVertex, Integer> index = new HashMap<>();
+        for (int i = 0; i < n; i++) index.put(vertices.get(i), i);
+
+        double[][] dist = new double[n][n];
+        Integer[][] next = new Integer[n][n]; // Для восстановления пути
+
+        for (int i = 0; i < n; i++) {
+            Arrays.fill(dist[i], Double.POSITIVE_INFINITY);
+            dist[i][i] = 0.0;
+        }
+
+        // Инициализация ребер
+        for (var entry : adjacencyList.entrySet()) {
+            int i = index.get(entry.getKey());
+            for (var edge : entry.getValue().entrySet()) {
+                int j = index.get(edge.getKey());
+                double w = weightToDouble(edge.getValue());
+                if (w < dist[i][j]) {
+                    dist[i][j] = w;
+                    next[i][j] = j;
+                }
+            }
+        }
+
+        // Основной цикл O(V^3)
+        for (int k = 0; k < n; k++) {
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    if (dist[i][k] != Double.POSITIVE_INFINITY && dist[k][j] != Double.POSITIVE_INFINITY) {
+                        if (dist[i][k] + dist[k][j] < dist[i][j]) {
+                            dist[i][j] = dist[i][k] + dist[k][j];
+                            next[i][j] = next[i][k];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Обработка отрицательных циклов: если путь проходит через цикл, он равен -Infinity
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                for (int t = 0; t < n; t++) {
+                    if (dist[t][t] < 0 && dist[i][t] != Double.POSITIVE_INFINITY && dist[t][j] != Double.POSITIVE_INFINITY) {
+                        dist[i][j] = Double.NEGATIVE_INFINITY;
+                    }
+                }
+            }
+        }
+
+        // Перенос результатов в FloydResult
+        Map<TVertex, Map<TVertex, Double>> distMap = new LinkedHashMap<>();
+        Map<TVertex, Map<TVertex, TVertex>> nextMap = new LinkedHashMap<>();
+
+        for (int i = 0; i < n; i++) {
+            Map<TVertex, Double> dRow = new LinkedHashMap<>();
+            Map<TVertex, TVertex> nRow = new LinkedHashMap<>();
+            for (int j = 0; j < n; j++) {
+                dRow.put(vertices.get(j), dist[i][j]);
+                nRow.put(vertices.get(j), next[i][j] != null ? vertices.get(next[i][j]) : null);
+            }
+            distMap.put(vertices.get(i), dRow);
+            nextMap.put(vertices.get(i), nRow);
+        }
+
+        return new FloydResult<>(vertices, distMap, nextMap);
+    }
+
 }

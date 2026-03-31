@@ -25,5 +25,7 @@ public interface IGraph<TVertex, TWeight> {
     Set<TVertex> getIncomingVertices(TVertex vertex);
     IGraph<TVertex, TWeight> getTranspose();
 
-
+    Graph.ShortestPathResult<TVertex> dijkstra(TVertex source);
+    Graph.ShortestPathResult<TVertex> bellmanFord(TVertex source);
+    Graph.FloydResult<TVertex> floydWarshall();
 }
