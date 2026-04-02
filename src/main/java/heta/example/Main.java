@@ -299,8 +299,7 @@ public class Main {
             return;
         }
 
-        // Если метод добавлен в интерфейс, приведение типа не нужно
-        String vertexName = ((Graph<String, Double>) graph).findVertexToRemoveToMakeTree();
+        String vertexName = graph.findVertexToRemoveToMakeTree();
 
         if (vertexName != null) {
             System.out.println("Можно удалить вершину так, что получится дерево.");

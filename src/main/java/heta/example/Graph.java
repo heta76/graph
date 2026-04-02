@@ -337,7 +337,7 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         // Создаём новый ориентированный граф с теми же свойствами
         Graph<TVertex, TWeight> transposed = new Graph<>(true, this.isWeighted);
 
-        // Добавляем все вершины (используем внутренний метод, т.к. мы внутри класса)
+        // Добавляем все вершины (используем внутренний метод)
         for (TVertex v : adjacencyList.keySet()) {
             transposed.addVertexInternal(v);
         }
@@ -494,7 +494,7 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         int V = adjacencyList.size();
         if (V <= 1) return null; // Из пустого графа или 1 вершины дерево не сделать
 
-        // Важно: getEdgeList() для неориентированного графа возвращает каждое ребро один раз
+        // getEdgeList() для неориентированного графа возвращает каждое ребро один раз
         int E = getEdgeList().size();
         int neededDegree = E - V + 2;
 
@@ -511,8 +511,6 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         }
         return null;
     }
-
-
 
     private boolean isConnectedWithoutVertex(TVertex removed) {
 
@@ -668,6 +666,13 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
 
         // Можно вывести вес в консоль для информации
         System.out.println("Общий вес остовного дерева: " + totalWeight);
+
+        if (edgesAdded == getVertexCount() - 1) {
+            System.out.println("Результат: получено остовное дерево (граф был связным).");
+        } else {
+            System.out.println("Результат: получен остовный лес (граф несвязный).");
+        }
+
         return mst;
     }
 
