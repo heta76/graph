@@ -28,4 +28,5 @@ public interface IGraph<TVertex, TWeight> {
     Graph.ShortestPathResult<TVertex> dijkstra(TVertex source);
     Graph.ShortestPathResult<TVertex> bellmanFord(TVertex source);
     Graph.FloydResult<TVertex> floydWarshall();
+    Graph.MaxFlowResult<TVertex> edmondsKarp(TVertex source, TVertex sink);
 }

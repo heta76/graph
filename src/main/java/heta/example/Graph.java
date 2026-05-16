@@ -477,7 +477,7 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         final V vertex;
         final double distance;
 
-        PQNode(V vertex, double distance) {
+            PQNode(V vertex, double distance) {
             this.vertex = vertex;
             this.distance = distance;
         }
@@ -816,7 +816,7 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
                 }
             }
         }
-
+// как понять после основного цикла без доп действий что есть цикл - веса
         // Основной цикл O(V^3)
         for (int k = 0; k < n; k++) {
             for (int i = 0; i < n; i++) {
@@ -832,11 +832,13 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         }
 
         // Обработка отрицательных циклов: если путь проходит через цикл, он равен -Infinity
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                for (int t = 0; t < n; t++) {
-                    if (dist[t][t] < 0 && dist[i][t] != Double.POSITIVE_INFINITY && dist[t][j] != Double.POSITIVE_INFINITY) {
-                        dist[i][j] = Double.NEGATIVE_INFINITY;
+        for (int k = 0; k < n; k++) {
+            if (dist[k][k] < 0) {
+                for (int i = 0; i < n; i++) {
+                    for (int j = 0; j < n; j++) {
+                        if (dist[i][k] != Double.POSITIVE_INFINITY && dist[k][j] != Double.POSITIVE_INFINITY) {
+                            dist[i][j] = Double.NEGATIVE_INFINITY;
+                        }
                     }
                 }
             }
@@ -860,4 +862,166 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         return new FloydResult<>(vertices, distMap, nextMap);
     }
 
+    @Override
+    public MaxFlowResult<TVertex> edmondsKarp(TVertex source, TVertex sink) {
+        if (!isDirected) {
+            throw new UnsupportedOperationException("Максимальный поток определяется для ориентированного графа.");
+        }
+
+        if (!adjacencyList.containsKey(source) || !adjacencyList.containsKey(sink)) {
+            throw new NoSuchElementException("Источник или сток не найден.");
+        }
+
+        if (source.equals(sink)) {
+            throw new IllegalArgumentException("Источник и сток должны быть различными вершинами.");
+        }
+
+        // residual[u][v] — остаточная пропускная способность
+        Map<TVertex, Map<TVertex, Double>> residual = new LinkedHashMap<>();
+        Map<TVertex, Map<TVertex, Double>> flow = new LinkedHashMap<>();
+
+        for (TVertex v : adjacencyList.keySet()) {
+            residual.put(v, new LinkedHashMap<>());
+            flow.put(v, new LinkedHashMap<>());
+        }
+
+        // Инициализация остаточной сети и потоков
+        for (var entry : adjacencyList.entrySet()) {
+            TVertex u = entry.getKey();
+            for (var edge : entry.getValue().entrySet()) {
+                TVertex v = edge.getKey();
+                double cap = weightToDouble(edge.getValue());
+
+                if (cap < 0) {
+                    throw new IllegalArgumentException("Пропускная способность не может быть отрицательной: " + u + " -> " + v);
+                }
+
+                residual.get(u).put(v, cap);
+                residual.get(v).putIfAbsent(u, 0.0);
+
+                flow.get(u).put(v, 0.0);
+            }
+        }
+
+        List<List<TVertex>> augmentingPaths = new ArrayList<>();
+        List<Double> bottlenecks = new ArrayList<>();
+        double maxFlow = 0.0;
+
+        while (true) {
+            Map<TVertex, TVertex> parent = new HashMap<>();
+            ArrayDeque<TVertex> queue = new ArrayDeque<>();
+
+            queue.add(source);
+            parent.put(source, null);
+
+            // BFS по остаточной сети
+            while (!queue.isEmpty() && !parent.containsKey(sink)) {
+                TVertex u = queue.poll();
+
+                for (var edge : residual.get(u).entrySet()) {
+                    TVertex v = edge.getKey();
+                    double cap = edge.getValue();
+
+                    if (cap > 1e-12 && !parent.containsKey(v)) {
+                        parent.put(v, u);
+                        queue.add(v);
+                    }
+                }
+            }
+
+            if (!parent.containsKey(sink)) {
+                break; // увеличивающего пути больше нет
+            }
+
+            // Восстановление пути и поиск bottleneck
+            List<TVertex> path = new ArrayList<>();
+            double bottleneck = Double.POSITIVE_INFINITY;
+
+            TVertex cur = sink;
+            while (cur != null) {
+                path.add(cur);
+                TVertex prev = parent.get(cur);
+                if (prev != null) {
+                    double cap = residual.get(prev).get(cur);
+                    bottleneck = Math.min(bottleneck, cap);
+                }
+                cur = prev;
+            }
+            Collections.reverse(path);
+
+            // Обновление residual и flow
+            cur = sink;
+            while (!cur.equals(source)) {
+                TVertex prev = parent.get(cur);
+
+                // уменьшаем прямую остаточную пропускную способность
+                residual.get(prev).put(cur, residual.get(prev).get(cur) - bottleneck);
+
+                // увеличиваем обратную остаточную пропускную способность
+                residual.get(cur).put(prev, residual.get(cur).getOrDefault(prev, 0.0) + bottleneck);
+
+                // Если ребро prev -> cur существует в исходном графе, значит это прямой шаг
+                if (adjacencyList.get(prev).containsKey(cur)) {
+                    flow.get(prev).put(cur, flow.get(prev).get(cur) + bottleneck);
+                } else {
+                    System.out.println("[!] Внимание: Использовано обратное ребро для оптимизации: "
+                            + prev + " <- " + cur + ". Поток уменьшен на " + bottleneck);
+                    // Иначе это обратный шаг: уменьшаем поток по исходному ребру cur -> prev
+                    flow.get(cur).put(prev, flow.get(cur).get(prev) - bottleneck);
+                }
+
+                cur = prev;
+            }
+
+            maxFlow += bottleneck;
+            augmentingPaths.add(path);
+            bottlenecks.add(bottleneck);
+        }
+
+        return new MaxFlowResult<>(maxFlow, flow, augmentingPaths, bottlenecks);
+    }
+
+    // --- Результат максимального потока ---
+    public static class MaxFlowResult<V> {
+        private final double maxFlow;
+        private final Map<V, Map<V, Double>> flows;
+        private final List<List<V>> augmentingPaths;
+        private final List<Double> bottlenecks;
+
+        public MaxFlowResult(double maxFlow,
+                             Map<V, Map<V, Double>> flows,
+                             List<List<V>> augmentingPaths,
+                             List<Double> bottlenecks) {
+            this.maxFlow = maxFlow;
+
+            Map<V, Map<V, Double>> flowsCopy = new LinkedHashMap<>();
+            for (var e : flows.entrySet()) {
+                flowsCopy.put(e.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(e.getValue())));
+            }
+            this.flows = Collections.unmodifiableMap(flowsCopy);
+
+            List<List<V>> pathsCopy = new ArrayList<>();
+            for (List<V> p : augmentingPaths) {
+                pathsCopy.add(Collections.unmodifiableList(new ArrayList<>(p)));
+            }
+            this.augmentingPaths = Collections.unmodifiableList(pathsCopy);
+            this.bottlenecks = Collections.unmodifiableList(new ArrayList<>(bottlenecks));
+        }
+
+        public double getMaxFlow() {
+            return maxFlow;
+        }
+
+        public Map<V, Map<V, Double>> getFlows() {
+            return flows;
+        }
+
+        public List<List<V>> getAugmentingPaths() {
+            return augmentingPaths;
+        }
+
+        public List<Double> getBottlenecks() {
+            return bottlenecks;
+        }
+    }
 }

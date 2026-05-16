@@ -91,7 +91,8 @@ public class Main {
                     case "14" -> showDijkstraPaths();
                     case "15" -> showBellmanFordPaths();
                     case "16" -> showFloydWarshall();
-                    case "17" -> buildMST();
+                    case "17" -> showMaxFlow();
+                    case "18" -> buildMST();
                     case "0" -> exit = true;
                     default -> System.out.println("Неверный ввод.");
                 }
@@ -357,7 +358,7 @@ public class Main {
         String u = scanner.nextLine();
 
         try {
-            Graph<String, Double> g = (Graph<String, Double>) graph;
+            var g = graph;
             var res = graph.dijkstra(u);
 
             for (String v : graph.getAdjacencyStructure().keySet()) {
@@ -428,7 +429,6 @@ public class Main {
         }
 
         try {
-            // Теперь вызываем метод напрямую из интерфейса без приведения типов
             var res = graph.floydWarshall();
             var vertices = res.getVertices();
 
@@ -493,6 +493,56 @@ public class Main {
         }
     }
 
+    private static void showMaxFlow() {
+        if (!graph.isDirected()) {
+            System.out.println("Ошибка: максимальный поток задаётся для ориентированного графа.");
+            return;
+        }
+
+        if (!graph.isWeighted()) {
+            System.out.println("Ошибка: для максимального потока нужны веса как пропускные способности.");
+            return;
+        }
+
+        System.out.print("Источник (s): ");
+        String s = scanner.nextLine();
+
+        System.out.print("Сток (t): ");
+        String t = scanner.nextLine();
+
+        try {
+            Graph.MaxFlowResult<String> result = graph.edmondsKarp(s, t);
+
+            System.out.println("Максимальный поток = " + formatDistance(result.getMaxFlow()));
+
+            System.out.println("\nПути увеличения:");
+            List<List<String>> paths = result.getAugmentingPaths();
+            List<Double> bottlenecks = result.getBottlenecks();
+
+            for (int i = 0; i < paths.size(); i++) {
+                System.out.println(
+                        (i + 1) + ") " + String.join(" -> ", paths.get(i)) +
+                                " | приращение = " + formatDistance(bottlenecks.get(i))
+                );
+            }
+
+            System.out.println("\nПотоки по рёбрам:");
+            var flows = result.getFlows();
+            for (var entry : flows.entrySet()) {
+                String u = entry.getKey();
+                for (var e : entry.getValue().entrySet()) {
+                    double f = e.getValue();
+                    if (Math.abs(f) > 1e-12) {
+                        System.out.println(u + " -> " + e.getKey() + " : " + formatDistance(f));
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            System.out.println("Ошибка: " + e.getMessage());
+        }
+    }
+
     // Вспомогательный метод для красивого вывода чисел
     private static String formatDistance(double d) {
         if (d == Double.POSITIVE_INFINITY) return "∞";
@@ -519,8 +569,9 @@ public class Main {
         System.out.println("14. Дейкстра: кратчайшие пути из вершины u");
         System.out.println("15. Беллман-Форд: кратчайшие пути из u1 и u2 до v");
         System.out.println("16. Флойд: длины кратчайших путей для всех пар");
+        System.out.println("17. Максимальный поток (Эдмондс–Карп)");
         if (!graph.isDirected() && graph.isWeighted()) {
-            System.out.println("17. Найти каркас минимального веса ");
+            System.out.println("18. Найти каркас минимального веса ");
         }
         System.out.println("0. Выход");
         System.out.print("> ");
