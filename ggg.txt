@@ -4,11 +4,11 @@ A B C D E F G H I J K
 A B 1.0
 B C 2.6
 C D 3.0
+C F -9.0
 D E -4.0
 E F 5.0
 F G 6.0
 G H 7.0
 H A 8.0
-C F -9.0
-J I -5.0
 I J 2.0
+J I -5.0

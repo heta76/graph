@@ -101,14 +101,24 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         this.reverseAdjacency = isDirected ? new HashMap<>() : null;
         this.adjacencyList = new HashMap<>();
 
-        // 2. Взвешенность (weighted/unweighted) - Строка 2
-        if (lines.size() < 2) throw new IOException("Неверный формат: отсутствует строка типа веса.");
-        String weightType = lines.get(1).trim().toLowerCase();
-        this.isWeighted = weightType.equals("weighted");
+        // 2. Взвешенность (опционально) и вершины
+        int lineIndex = 1;
+        if (lines.size() < 2) {
+            throw new IOException("Неверный формат: слишком мало строк.");
+        }
 
         // 3. Парсинг вершин - Строка 3
-        if (lines.size() > 2 && !lines.get(2).isBlank()) {
-            String[] verticesParts = lines.get(2).split(separator);
+        String secondLine = lines.get(1).trim().toLowerCase();
+        int vertexLineIndex;
+        if (secondLine.equals("weighted") || secondLine.equals("unweighted")) {
+            this.isWeighted = secondLine.equals("weighted");
+            vertexLineIndex = 2;
+        } else {
+            vertexLineIndex = 1;
+            this.isWeighted = detectWeightedEdges(lines, vertexLineIndex + 1, separator);
+        }
+        if (lines.size() > vertexLineIndex && !lines.get(vertexLineIndex).isBlank()) {
+            String[] verticesParts = lines.get(vertexLineIndex).split(separator);
             for (String vStr : verticesParts) {
                 if (!vStr.isBlank()) {
                     addVertexInternal(vertexParser.apply(vStr.trim()));
@@ -117,17 +127,24 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
         }
 
         // 4. Парсинг ребер - Строки 4+
-        for (int i = 3; i < lines.size(); i++) {
+        int edgeStart = vertexLineIndex + 1;
+        for (int i = edgeStart; i < lines.size(); i++) {
             String line = lines.get(i);
             if (line.isBlank()) continue;
 
             String[] parts = line.split(separator);
+            if (parts.length < 2) {
+                throw new IOException("Строка " + (i + 1) + ": ожидались минимум две вершины.");
+            }
             TVertex v1 = vertexParser.apply(parts[0].trim());
             TVertex v2 = vertexParser.apply(parts[1].trim());
-
+            ensureVertex(v1);
+            ensureVertex(v2);
             TWeight w;
             if (isWeighted) {
-                if (parts.length < 3) throw new IOException("Строка " + (i + 1) + ": ожидался вес.");
+                if (parts.length < 3) {
+                    throw new IOException("Строка " + (i + 1) + ": ожидался вес.");
+                }
                 w = weightParser.apply(parts[2].trim());
             } else {
                 w = defaultWeight; // Используем дефолт (например, 1.0)
@@ -136,7 +153,23 @@ public class Graph<TVertex, TWeight> implements IGraph<TVertex, TWeight>{
             addEdge(v1, v2, w);
         }
     }
-
+    
+    private void ensureVertex(TVertex vertex) {
+        if (!adjacencyList.containsKey(vertex)) {
+            addVertexInternal(vertex);
+        }
+    }
+    private static boolean detectWeightedEdges(List<String> lines, int fromIndex, String separator) {
+        for (int i = fromIndex; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) continue;
+            String[] parts = line.split(separator);
+            if (parts.length >= 3) {
+                return true;
+            }
+        }
+        return false;
+    }
     // --- Методы ---
     @Override
     public boolean isDirected() { return isDirected; }
