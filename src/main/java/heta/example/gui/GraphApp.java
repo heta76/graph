@@ -7,10 +7,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
-/**
- * Точка входа GUI. Запуск: {@code mvn javafx:run}
- * или main-класс {@code heta.example.gui.GraphApp}.
- */
 public class GraphApp extends Application {
 
     @Override
@@ -24,12 +20,12 @@ public class GraphApp extends Application {
         output.setEditable(false);
         output.setMinHeight(120);
         output.setFont(javafx.scene.text.Font.font("Monospaced", 12));
-        output.setWrapText(false);   // по умолчанию без переноса, для матриц
+        output.setWrapText(false);
 
         // ---------- контроллер ----------
         GraphGuiController ctrl = new GraphGuiController(canvas, output);
 
-        // ---------- элементы анимации ----------
+        // ---------- элементы анимации (создаём ДО использования) ----------
         CheckBox animateCheck = new CheckBox("Анимация");
         animateCheck.setSelected(true);
 
@@ -45,8 +41,19 @@ public class GraphApp extends Application {
                 speedLabel.setText("Задержка: " + newVal.intValue() + " мс"));
 
         Button replayBtn = btn("Повторить анимацию", ctrl::replayAnimation);
+        Button pauseBtn = new Button("Пауза");
+        pauseBtn.setOnAction(e -> {
+            ctrl.togglePause();
+            pauseBtn.setText(ctrl.isAnimationPaused() ? "Продолжить" : "Пауза");
+        });
+        Button stopBtn = btn("Стоп", ctrl::stopAnimation);
+        // ---------- связываем анимацию с контроллером (один раз) ----------
+        animateCheck.selectedProperty().addListener((obs, oldVal, newVal) ->
+                ctrl.setAnimationEnabled(newVal));
+        speedSlider.valueProperty().addListener((obs, oldVal, newVal) ->
+                ctrl.setAnimationDelay(newVal.intValue()));
 
-        // ---------- левая панель с кнопками ----------
+        // ---------- левая панель ----------
         VBox left = new VBox(6,
                 section("Граф"),
                 btn("Новый граф", ctrl::createNewGraph),
@@ -70,6 +77,8 @@ public class GraphApp extends Application {
                 speedSlider,
                 speedLabel,
                 replayBtn,
+                pauseBtn,
+                stopBtn,
                 new Separator(),
 
                 section("Алгоритмы"),
@@ -83,7 +92,6 @@ public class GraphApp extends Application {
                 btn("Полустепень исхода", ctrl::showOutDegree),
                 btn("Сохранить обращение", ctrl::saveTranspose),
                 new Separator(),
-
                 btn("Очистить вывод / подсветку", ctrl::clearOutput)
         );
         left.setPadding(new Insets(10));
@@ -94,14 +102,12 @@ public class GraphApp extends Application {
         leftScroll.setPrefWidth(240);
         leftScroll.setMinWidth(200);
 
-        // ---------- правая часть (вывод) ----------
         VBox right = new VBox(6, new Label("Вывод"), output);
         VBox.setVgrow(output, Priority.ALWAYS);
         right.setPadding(new Insets(10));
         right.setPrefWidth(280);
         right.setMinWidth(180);
 
-        // ---------- центральная область ----------
         SplitPane centerSplit = new SplitPane(canvas, right);
         centerSplit.setOrientation(javafx.geometry.Orientation.HORIZONTAL);
         centerSplit.setDividerPositions(0.68);
@@ -116,16 +122,8 @@ public class GraphApp extends Application {
         stage.setScene(scene);
         stage.setMinWidth(800);
         stage.setMinHeight(500);
-
-        // ---------- связывание анимации с контроллером ----------
-        animateCheck.selectedProperty().addListener((obs, oldVal, newVal) ->
-                ctrl.setAnimationEnabled(newVal));
-        speedSlider.valueProperty().addListener((obs, oldVal, newVal) ->
-                ctrl.setAnimationDelay(newVal.intValue()));
-
         stage.show();
 
-        // ---------- перерисовка при изменении размера холста ----------
         canvas.widthProperty().addListener((o, a, b) -> {
             if (ctrl.getGraph() != null) {
                 canvas.redraw();
@@ -133,7 +131,6 @@ public class GraphApp extends Application {
         });
     }
 
-    // ---------- вспомогательные методы для построения GUI ----------
     private static Label section(String title) {
         Label l = new Label(title);
         l.setStyle("-fx-font-weight: bold;");

@@ -1,9 +1,14 @@
 undirected
+weighted
 A B C D E F G H I J
 A C 3.0
 A G 10.0
+A J 1.0
 B C 2.0
+B H 1.0
 D E 4.0
 D F 6.0
+D G 1.0
 E F 5.0
 H I 1.1
+I J 1.0

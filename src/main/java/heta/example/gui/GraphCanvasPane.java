@@ -215,11 +215,26 @@ public class GraphCanvasPane extends StackPane {
 
             GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(edge.source, edge.dest, directed);
             boolean hl = highlight.getHighlightedEdges().contains(key);
-            Color hlColor = switch (highlight.getMode()) {
-                case MST -> HIGHLIGHT_MST;
-                case FLOW -> HIGHLIGHT_FLOW;
-                default -> HIGHLIGHT_PATH;
-            };
+            Color hlColor;
+            GraphHighlight.Mode mode = highlight.getMode();
+            if (mode == GraphHighlight.Mode.MST) {
+                hlColor = HIGHLIGHT_MST;
+            } else if (mode == GraphHighlight.Mode.FLOW) {
+                hlColor = HIGHLIGHT_FLOW;
+            } else if (mode == GraphHighlight.Mode.PATH) {
+                // key уже определена выше, повторно не объявляем!
+                if (highlight.isPath2Edge(key)) {
+                    hlColor = Color.web("#1565c0");   // синий – приоритет у второго пути
+                } else if (highlight.isPath1Edge(key)) {
+                    hlColor = Color.web("#c62828");   // красный
+                } else {
+                    hlColor = HIGHLIGHT_PATH;         // стандартный цвет подсветки
+                }
+            } else {
+                hlColor = HIGHLIGHT_PATH;
+            }
+            gc.setStroke(hl ? hlColor : EDGE_COLOR);
+            gc.setLineWidth(hl ? 3 : 1.5);
             gc.setStroke(hl ? hlColor : EDGE_COLOR);
             gc.setLineWidth(hl ? 3 : 1.5);
 
@@ -251,7 +266,16 @@ public class GraphCanvasPane extends StackPane {
                     double tw = textWidth(label);
                     labelPos = new Point2D(labelPos.getX() - tw / 2, labelPos.getY());
                 }
-                gc.setFill(Color.web("#333"));
+                // Определяем цвет по содержимому метки
+                Color labelColor;
+                if ("u1".equals(label)) {
+                    labelColor = Color.web("#c62828");   // красный
+                } else if ("u2".equals(label)) {
+                    labelColor = Color.web("#1565c0");   // синий
+                } else {
+                    labelColor = Color.web("#333");      // обычный тёмный
+                }
+                gc.setFill(labelColor);
                 gc.setFont(Font.font(11));
                 gc.fillText(label, labelPos.getX(), labelPos.getY());
             }

@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Queue;
+import java.util.LinkedList;
 import java.io.File;
 import java.util.StringJoiner;
 /** Связывает кнопки GUI с методами {@link IGraph} и {@link Graph}. */
@@ -31,6 +33,16 @@ public class GraphGuiController {
     private boolean dirty;
     private boolean layoutDirty;
     private static File lastDirectory = null;
+    private int animationId = 0;   // идентификатор текущей анимации
+
+
+    // --- АНИМАЦИЯ ---
+    private List<GraphHighlight> lastAnimationSteps; // сохранённые шаги для повтора
+    private int animationDelay = 200;                 // задержка в мс (по умолчанию)
+    private boolean animationEnabled = true;          // включена ли анимация
+    private volatile boolean animationPaused = false;
+    private final Object pauseLock = new Object();
+
     public GraphGuiController(GraphCanvasPane canvas, TextArea output) {
         this.canvas = canvas;
         this.output = output;
@@ -52,6 +64,8 @@ public class GraphGuiController {
     private void markDirty() {
         dirty = true;
     }
+
+
 
     private void saveLayoutIfPossible() {
         if (currentGraphPath == null || !layoutDirty) {
@@ -151,6 +165,54 @@ public class GraphGuiController {
                 + (weighted ? "взвешенный" : "невзвешенный") + " граф.");
         refreshCanvas();
     }
+
+    public void setAnimationEnabled(boolean enabled) {
+        this.animationEnabled = enabled;
+    }
+
+    public void setAnimationDelay(int delay) {
+        this.animationDelay = delay;
+    }
+
+    public void replayAnimation() {
+        if (lastAnimationSteps != null && !lastAnimationSteps.isEmpty()) {
+            highlight.clear();               // <-- полная очистка текущей подсветки
+            canvas.setHighlight(highlight);
+            canvas.redraw();
+            animationId++; // новое воспроизведение
+            int currentId = animationId;
+            animationPaused = false;
+            synchronized (pauseLock) {
+                pauseLock.notifyAll();
+            }
+            playSteps(new ArrayList<>(lastAnimationSteps), 0, currentId, null);
+        } else {
+            appendOutput("Нет сохранённой анимации для повтора.");
+        }
+    }
+    public void togglePause() {
+        animationPaused = !animationPaused;
+        if (!animationPaused) {
+            synchronized (pauseLock) {
+                pauseLock.notifyAll();  // пробуждаем ожидающий поток анимации
+            }
+            appendOutput(animationPaused ? "Анимация приостановлена." : "Анимация продолжена.");
+        }
+    }
+
+    public void stopAnimation() {
+        animationId++;                         // прерываем текущую анимацию
+//        lastAnimationSteps = null;
+        animationPaused = false;
+        synchronized (pauseLock) {
+            pauseLock.notifyAll();             // на случай, если поток ждал паузы
+        }
+        highlight.clear();
+        canvas.setHighlight(highlight);
+        canvas.redraw();
+        appendOutput("Анимация остановлена.");
+    }
+
     public void loadFromFile() {
         FileChooser fc = new FileChooser();
         fc.setTitle("Загрузить граф");
@@ -351,38 +413,82 @@ public class GraphGuiController {
 
     public void runDijkstra() {
         requireGraph();
-        if (!graph.isWeighted()) {
-            showError("Дейкстра требует взвешенный граф.");
-            return;
-        }
+        animationId++;
+        if (!graph.isWeighted()) { showError("Дейкстра требует взвешенный граф."); return; }
         Optional<String> source = pickVertex("Дейкстра", "Источник:");
-        if (source.isEmpty()) {
-            return;
-        }
+        if (source.isEmpty()) return;
         try {
             var res = graph.dijkstra(source.get());
             output.clear();
             appendOutput("Кратчайшие пути из «" + source.get() + "»:");
             for (String v : graph.getAdjacencyStructure().keySet()) {
                 double d = res.getDistance(v);
-                if (Double.isInfinite(d)) {
-                    appendOutput("  → " + v + ": нет пути");
-                } else {
-                    appendOutput("  → " + v + " = " + formatDistance(d)
-                            + " | " + String.join(" → ", res.buildPathTo(v)));
-                }
+                if (Double.isInfinite(d)) appendOutput("  → " + v + ": нет пути");
+                else appendOutput("  → " + v + " = " + formatDistance(d)
+                        + " | " + String.join(" → ", res.buildPathTo(v)));
             }
             boolean directed = graph.isDirected();
-            highlight.setShortestPathTree(res, directed);
-            canvas.setHighlight(highlight);
-            canvas.redraw();
+
+            if (animationEnabled) {
+                // Строим шаги: BFS по дереву кратчайших путей
+                Map<String, Integer> depth = new HashMap<>();
+                Queue<String> q = new LinkedList<>();
+                q.add(source.get());
+                depth.put(source.get(), 0);
+                Map<Integer, List<GraphHighlight.EdgeKey>> edgesByDepth = new HashMap<>();
+
+                while (!q.isEmpty()) {
+                    String u = q.poll();
+                    int du = depth.get(u);
+                    for (Map.Entry<String, Double> e : graph.getAdjacencyStructure().get(u).entrySet()) {
+                        String v = e.getKey();
+                        List<String> path = res.buildPathTo(v);
+                        if (path.size() >= 2 && path.get(path.size()-2).equals(u)) {
+                            if (!depth.containsKey(v)) {
+                                depth.put(v, du + 1);
+                                q.add(v);
+                            }
+                            GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(u, v, directed);
+                            edgesByDepth.computeIfAbsent(du, k -> new ArrayList<>()).add(key);
+                        }
+                    }
+                }
+
+                List<GraphHighlight> steps = new ArrayList<>();
+                GraphHighlight current = new GraphHighlight();
+                current.setMode(GraphHighlight.Mode.PATH);
+                current.addHighlightedVertex(source.get());
+                steps.add(new GraphHighlight(current)); // шаг 0 – только источник
+
+                for (int d = 0; edgesByDepth.containsKey(d); d++) {
+                    List<GraphHighlight.EdgeKey> levelEdges = edgesByDepth.get(d);
+                    for (GraphHighlight.EdgeKey ek : levelEdges) {
+                        current.addHighlightedEdge(ek);
+                        current.addHighlightedVertex(ek.a());
+                        current.addHighlightedVertex(ek.b());
+                    }
+                    steps.add(new GraphHighlight(current));
+                }
+
+                // Финальный шаг – полное дерево
+                GraphHighlight finalHl = new GraphHighlight();
+                finalHl.setShortestPathTree(res, directed);
+                steps.add(finalHl);
+
+                runAnimation(steps, null);
+            } else {
+                highlight.setShortestPathTree(res, directed);
+                canvas.setHighlight(highlight);
+                canvas.redraw();
+            }
             appendOutput("(На холсте подсвечено дерево кратчайших путей)");
-        } catch (Exception e) {
-            showError(e.getMessage());
-        }
+        } catch (Exception e) { showError(e.getMessage()); }
     }
+
     public void runBellmanFord() {
         requireGraph();
+        animationId++;
+        lastAnimationSteps = null;
         if (!graph.isWeighted()) {
             showError("Беллман–Форд требует взвешенный граф.");
             return;
@@ -390,25 +496,75 @@ public class GraphGuiController {
         Optional<String> u1 = askString("Беллман–Форд", "Вершина u1:", "");
         Optional<String> u2 = askString("Беллман–Форд", "Вершина u2:", "");
         Optional<String> v = askString("Беллман–Форд", "Целевая v:", "");
-        if (u1.isEmpty() || u2.isEmpty() || v.isEmpty()) {
-            return;
-        }
+        if (u1.isEmpty() || u2.isEmpty() || v.isEmpty()) return;
+
         try {
             output.clear();
             var r1 = asGraph().bellmanFord(u1.get());
-            printPathResult(u1.get(), v.get(), r1);
             var r2 = asGraph().bellmanFord(u2.get());
+            printPathResult(u1.get(), v.get(), r1);
             printPathResult(u2.get(), v.get(), r2);
+
             boolean directed = graph.isDirected();
-            highlight.setShortestPathTree(r1, directed);
-            highlight.addPath(r1.buildPathTo(v.get()), directed);
-            highlight.addPath(r2.buildPathTo(v.get()), directed);
-            canvas.setHighlight(highlight);
-            canvas.redraw();
+
+            List<String> path1 = r1.buildPathTo(v.get());
+            List<String> path2 = r2.buildPathTo(v.get());
+
+            if (animationEnabled) {
+                List<GraphHighlight> steps = new ArrayList<>();
+                GraphHighlight current = new GraphHighlight();
+                current.setMode(GraphHighlight.Mode.PATH);
+                Map<GraphHighlight.EdgeKey, String> labels = new HashMap<>();
+
+                // Путь u1 -> v
+                if (path1.size() >= 2) {
+                    current.addHighlightedVertex(path1.get(0));
+                    steps.add(copyOf(current, labels));
+                    for (int i = 0; i < path1.size() - 1; i++) {
+                        GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(path1.get(i), path1.get(i+1), directed);
+                        current.addHighlightedEdge(key);
+                        current.addPath1Edge(key);                    // ← красим в красный
+                        current.addHighlightedVertex(path1.get(i+1));
+                        labels.put(key, "u1");
+                        steps.add(copyOf(current, labels));
+                    }
+                }
+
+                // Путь u2 -> v
+                if (path2.size() >= 2) {
+                    for (int i = 0; i < path2.size() - 1; i++) {
+                        GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(path2.get(i), path2.get(i+1), directed);
+                        current.addHighlightedEdge(key);
+                        current.addPath2Edge(key);                    // ← красим в синий
+                        current.addHighlightedVertex(path2.get(i+1));
+                        labels.put(key, "u2");
+                        steps.add(copyOf(current, labels));
+                    }
+                }
+
+                // Финальный шаг
+                steps.add(copyOf(current, labels));
+
+                runAnimation(steps, null);
+            } else {
+                highlight.clear();
+                highlight.setPath(path1, directed);
+                highlight.addPath(path2, directed);
+                canvas.setHighlight(highlight);
+                canvas.redraw();
+            }
         } catch (Exception e) {
             showError(e.getMessage());
         }
     }
+
+    // Утилитарный метод – создаёт копию GraphHighlight и устанавливает метки
+    private GraphHighlight copyOf(GraphHighlight src, Map<GraphHighlight.EdgeKey, String> labels) {
+        GraphHighlight copy = new GraphHighlight(src);
+        copy.setEdgeLabels(new HashMap<>(labels));
+        return copy;
+    }
+
     private void printPathResult(String from, String to, Graph.ShortestPathResult<String> res) {
         double d = res.getDistance(to);
         if (Double.isInfinite(d)) {
@@ -420,6 +576,8 @@ public class GraphGuiController {
     }
     public void runFloyd() {
         requireGraph();
+        animationId++;
+        lastAnimationSteps = null;
         if (!graph.isWeighted()) {
             showError("Флойд требует взвешенный граф.");
             return;
@@ -486,9 +644,29 @@ public class GraphGuiController {
             appendOutput("Путь " + fromV.get() + " → " + toV.get() + ": "
                     + (path == null ? "через отриц. цикл" : path.isEmpty() ? "нет" : String.join(" → ", path)));
             if (path != null && !path.isEmpty()) {
-                highlight.setPath(path, graph.isDirected());
-                canvas.setHighlight(highlight);
-                canvas.redraw();
+                boolean directed = graph.isDirected();
+                if (animationEnabled) {
+                    List<GraphHighlight> steps = new ArrayList<>();
+                    GraphHighlight current = new GraphHighlight();
+                    current.setMode(GraphHighlight.Mode.PATH);
+                    // Шаг 0: только начальная вершина
+                    current.addHighlightedVertex(path.get(0));
+                    steps.add(new GraphHighlight(current));
+                    // Далее добавляем по одному ребру и вершине
+                    for (int i = 0; i < path.size() - 1; i++) {
+                        GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(path.get(i), path.get(i+1), directed);
+                        current.addHighlightedEdge(key);
+                        current.addHighlightedVertex(path.get(i+1));
+                        steps.add(new GraphHighlight(current));
+                    }
+                    // Финальный шаг можно не дублировать, но оставим для надёжности
+                    steps.add(new GraphHighlight(current));
+                    runAnimation(steps, null);
+                } else {
+                    highlight.setPath(path, directed);
+                    canvas.setHighlight(highlight);
+                    canvas.redraw();
+                }
             }
         } catch (Exception e) {
             showError(e.getMessage());
@@ -496,19 +674,20 @@ public class GraphGuiController {
     }
     public void runMaxFlow() {
         requireGraph();
+        animationId++;
+        lastAnimationSteps = null;
         if (!graph.isDirected() || !graph.isWeighted()) {
             showError("Поток: ориентированный взвешенный граф (веса = пропускные способности).");
             return;
         }
         Optional<String> s = pickVertex("Поток", "Источник s:");
         Optional<String> t = pickVertex("Поток", "Сток t:");
-        if (s.isEmpty() || t.isEmpty()) {
-            return;
-        }
+        if (s.isEmpty() || t.isEmpty()) return;
         try {
             Graph.MaxFlowResult<String> result = graph.edmondsKarp(s.get(), t.get());
             output.clear();
             appendOutput("Макс. поток = " + formatDistance(result.getMaxFlow()));
+
             Map<GraphHighlight.EdgeKey, String> labels = new HashMap<>();
             var flows = result.getFlows();
             for (var e : graph.getEdgeList()) {
@@ -519,52 +698,95 @@ public class GraphGuiController {
                     labels.put(key, formatDistance(f) + "/" + formatDistance(cap));
                 }
             }
-            highlight.clear();
-            highlight.setFlowEdges(flows, true);
-            highlight.setEdgeLabels(labels);
-            for (List<String> path : result.getAugmentingPaths()) {
-                highlight.addPath(path, true);
+
+            if (animationEnabled && !result.getAugmentingPaths().isEmpty()) {
+                List<GraphHighlight> steps = new ArrayList<>();
+                GraphHighlight accum = new GraphHighlight();
+                accum.setMode(GraphHighlight.Mode.FLOW);
+                Map<GraphHighlight.EdgeKey, String> accumLabels = new HashMap<>();
+                for (int i = 0; i < result.getAugmentingPaths().size(); i++) {
+                    List<String> path = result.getAugmentingPaths().get(i);
+                    for (int j = 0; j < path.size() - 1; j++) {
+                        GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(path.get(j), path.get(j+1), true);
+                        accum.addHighlightedEdge(key);
+                        accum.addHighlightedVertex(path.get(j));
+                        accum.addHighlightedVertex(path.get(j+1));
+                        if (labels.containsKey(key)) accumLabels.put(key, labels.get(key));
+                    }
+                    accum.setEdgeLabels(new HashMap<>(accumLabels));
+                    steps.add(new GraphHighlight(accum));
+                }
+                // Финальный шаг – все рёбра с потоками
+                // Финальный шаг – накопленные рёбра и вершины + метки
+                accum.setEdgeLabels(new HashMap<>(labels));
+                steps.add(new GraphHighlight(accum));
+
+                runAnimation(steps, null);
+            } else {
+                highlight.clear();
+                highlight.setFlowEdges(flows, true);
+                highlight.setEdgeLabels(labels);
+                for (List<String> path : result.getAugmentingPaths()) {
+                    highlight.addPath(path, true);
+                }
+                canvas.setHighlight(highlight);
+                canvas.redraw();
             }
-            canvas.setHighlight(highlight);
-            canvas.redraw();
+
             for (var entry : flows.entrySet()) {
                 for (var edge : entry.getValue().entrySet()) {
-                    if (Math.abs(edge.getValue()) > 1e-12) {
+                    if (Math.abs(edge.getValue()) > 1e-12)
                         appendOutput(entry.getKey() + " → " + edge.getKey() + " : " + formatDistance(edge.getValue()));
-                    }
                 }
             }
-        } catch (Exception e) {
-            showError(e.getMessage());
-        }
+        } catch (Exception e) { showError(e.getMessage()); }
     }
-  public void runMst() {
+
+    public void runMst() {
         requireGraph();
+        animationId++;
         if (graph.isDirected() || !graph.isWeighted()) {
             showError("Краскал: неориентированный взвешенный граф.");
             return;
         }
         try {
             IGraph<String, Double> mst = asGraph().getKruskalMST();
-            Set<GraphHighlight.EdgeKey> edges = new HashSet<>();
-            for (Graph.Edge<String, Double> e : mst.getEdgeList()) {
-                edges.add(GraphHighlight.EdgeKey.of(e.source, e.dest, false));
+            List<Graph.Edge<String, Double>> mstEdges = mst.getEdgeList();
+            Set<GraphHighlight.EdgeKey> edgeKeys = new HashSet<>();
+            for (Graph.Edge<String, Double> e : mstEdges)
+                edgeKeys.add(GraphHighlight.EdgeKey.of(e.source, e.dest, false));
+
+            if (animationEnabled) {
+                List<GraphHighlight> steps = new ArrayList<>();
+                GraphHighlight accum = new GraphHighlight();
+                accum.setMode(GraphHighlight.Mode.MST);
+                for (Graph.Edge<String, Double> e : mstEdges) {
+                    GraphHighlight.EdgeKey key = GraphHighlight.EdgeKey.of(e.source, e.dest, false);
+                    accum.addHighlightedEdge(key);
+                    accum.addHighlightedVertex(e.source);
+                    accum.addHighlightedVertex(e.dest);
+                    steps.add(new GraphHighlight(accum));
+                }
+                // Финальный шаг – все рёбра
+                steps.add(new GraphHighlight(accum));
+                runAnimation(steps, null);
+            } else {
+                highlight.clear();
+                highlight.setEdges(edgeKeys);
+                canvas.setHighlight(highlight);
+                canvas.redraw();
             }
-            highlight.clear();
-            highlight.setEdges(edges);
-            canvas.setHighlight(highlight);
-            canvas.redraw();
-            appendOutput("MST: " + mst.getEdgeList().size() + " рёбер (зелёная подсветка на холсте).");
+
+            appendOutput("MST: " + mstEdges.size() + " рёбер (зелёная подсветка на холсте).");
             if (confirm("Заменить текущий граф на MST?")) {
                 graph = mst;
                 layout.clear();
                 markDirty();
                 refreshCanvas();
             }
-        } catch (Exception e) {
-            showError(e.getMessage());
-        }
+        } catch (Exception e) { showError(e.getMessage()); }
     }
+
     public void showRadius() {
         requireGraph();
         try {
@@ -580,6 +802,8 @@ public class GraphGuiController {
     }
     public void checkTreeVertex() {
         requireGraph();
+        animationId++;
+        lastAnimationSteps = null;
         if (graph.isDirected()) {
             showError("Только для неориентированного графа.");
             return;
@@ -647,6 +871,63 @@ public class GraphGuiController {
             showError("Не удалось сохранить раскладку: " + e.getMessage());
         }
     }
+
+
+    private void runAnimation(List<GraphHighlight> steps, Runnable onFinished) {
+        if (steps == null || steps.isEmpty()) {
+            if (onFinished != null) onFinished.run();
+            return;
+        }
+        lastAnimationSteps = new ArrayList<>(steps);
+        highlight.clear();               // полный сброс текущей подсветки
+        canvas.setHighlight(highlight);
+        canvas.redraw();
+        animationId++;                        // новый идентификатор
+        animationPaused = false;
+        synchronized (pauseLock) {
+            pauseLock.notifyAll();  // на всякий случай пробуждаем
+        }
+        int currentId = animationId;
+
+        playSteps(steps, 0, currentId, onFinished);
+    }
+
+    private void playSteps(List<GraphHighlight> steps, int index, int id, Runnable onFinished) {
+        if (id != animationId) return;        // прерывание, если запущена более новая анимация
+        if (index >= steps.size()) {
+            if (onFinished != null) onFinished.run();
+            return;
+        }
+        GraphHighlight step = steps.get(index);
+        highlight.clear();
+        highlight.setMode(step.getMode());
+        highlight.addHighlightedVertices(step.getHighlightedVertices());
+        highlight.addHighlightedEdges(step.getHighlightedEdges());
+        highlight.setEdgeLabels(new HashMap<>(step.getEdgeLabels()));
+        highlight.addPath1Edges(step.getPath1Edges());
+        highlight.addPath2Edges(step.getPath2Edges());
+        canvas.setHighlight(highlight);
+        canvas.redraw();
+
+        new Thread(() -> {
+            try { Thread.sleep(animationDelay); } catch (InterruptedException ignored) {}
+
+            // Ожидание, если анимация на паузе и не была прервана
+            synchronized (pauseLock) {
+                while (animationPaused && id == animationId) {
+                    try {
+                        pauseLock.wait();
+                    } catch (InterruptedException ignored) {}
+                }
+            }
+
+            // Если за время паузы анимация была остановлена, не продолжаем
+            if (id != animationId) return;
+
+            javafx.application.Platform.runLater(() -> playSteps(steps, index + 1, id, onFinished));
+        }).start();
+    }
+
     public void clearOutput() {
         output.clear();
         clearHighlight();
@@ -670,4 +951,9 @@ public class GraphGuiController {
         }
         return s;
     }
+
+    public boolean isAnimationPaused() {
+        return animationPaused;
+    }
+
 }
