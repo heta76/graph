@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.io.File;
 import java.util.StringJoiner;
 /** Связывает кнопки GUI с методами {@link IGraph} и {@link Graph}. */
 public class GraphGuiController {
@@ -29,6 +30,7 @@ public class GraphGuiController {
     private String currentGraphPath;
     private boolean dirty;
     private boolean layoutDirty;
+    private static File lastDirectory = null;
     public GraphGuiController(GraphCanvasPane canvas, TextArea output) {
         this.canvas = canvas;
         this.output = output;
@@ -153,10 +155,17 @@ public class GraphGuiController {
         FileChooser fc = new FileChooser();
         fc.setTitle("Загрузить граф");
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Текстовые файлы", "*.txt"));
-        File file = fc.showOpenDialog(window());
-        if (file == null) {
-            return;
+
+        // Устанавливаем начальную директорию
+        if (lastDirectory != null && lastDirectory.exists()) {
+            fc.setInitialDirectory(lastDirectory);
         }
+
+        File file = fc.showOpenDialog(window());
+        if (file == null) return;
+
+        // Запоминаем папку
+        lastDirectory = file.getParentFile();
         if (graph != null && dirty && !confirm("Есть несохранённые изменения. Загрузить другой файл?")) {
             return;
         }
@@ -182,10 +191,23 @@ public class GraphGuiController {
         FileChooser fc = new FileChooser();
         fc.setTitle("Сохранить граф");
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Текстовые файлы", "*.txt"));
-        File file = fc.showSaveDialog(window());
-        if (file == null) {
-            return;
+
+        // Устанавливаем начальную директорию
+        if (lastDirectory != null && lastDirectory.exists()) {
+            fc.setInitialDirectory(lastDirectory);
         }
+
+        // Если есть текущий путь, предлагаем его как имя по умолчанию
+        if (currentGraphPath != null) {
+            File currentFile = new File(currentGraphPath);
+            fc.setInitialFileName(currentFile.getName());
+        }
+
+        File file = fc.showSaveDialog(window());
+        if (file == null) return;
+
+        // Запоминаем папку
+        lastDirectory = file.getParentFile();
         try {
             String path = file.getAbsolutePath();
             graph.saveToFile(path, " ");
@@ -405,33 +427,63 @@ public class GraphGuiController {
         try {
             var res = graph.floydWarshall();
             var vertices = res.getVertices();
-            output.clear();
-            int col = 10;
-            StringBuilder header = new StringBuilder(" ".repeat(6));
-            for (String v : vertices) {
-                header.append(String.format("%" + col + "s", v));
-            }
-            appendOutput(header.toString());
-            for (String from : vertices) {
-                StringBuilder row = new StringBuilder(String.format("%6s", from));
-                for (String to : vertices) {
-                    row.append(String.format("%" + col + "s", formatDistance(res.getDistance(from, to))));
+
+            boolean oldWrap = output.isWrapText();
+            output.setWrapText(false);
+            // Иногда JavaFX нужно «толкнуть», чтобы пересчитала scrollbar
+            output.applyCss();
+            output.layout();
+
+            try {
+                output.clear();
+
+                // --- подбираем ширину колонки ---
+                int maxLen = 0;
+                for (String v : vertices) {
+                    maxLen = Math.max(maxLen, v.length());
                 }
-                appendOutput(row.toString());
+                for (String from : vertices) {
+                    for (String to : vertices) {
+                        String d = formatDistance(res.getDistance(from, to));
+                        maxLen = Math.max(maxLen, d.length());
+                    }
+                }
+                int col = maxLen + 2;
+                String colFmt = "%" + col + "s";
+
+                StringBuilder header = new StringBuilder(String.format(colFmt, ""));
+                for (String v : vertices) {
+                    header.append(String.format(colFmt, v));
+                }
+                appendOutput(header.toString());
+
+                for (String from : vertices) {
+                    StringBuilder row = new StringBuilder(String.format(colFmt, from));
+                    for (String to : vertices) {
+                        row.append(String.format(colFmt, formatDistance(res.getDistance(from, to))));
+                    }
+                    appendOutput(row.toString());
+                }
+
+            } finally {
+                // Гарантированно восстанавливаем
+                output.setWrapText(oldWrap);
+                output.applyCss();
+                output.layout();
             }
+
             if (res.hasNegativeCycle()) {
                 appendOutput("[!] Обнаружен отрицательный цикл.");
             }
-            Optional<String> from = pickVertex("Флойд", "Путь: от");
-            if (from.isEmpty()) {
-                return;
-            }
-            Optional<String> to = pickVertex("Флойд", "Путь: до");
-            if (to.isEmpty()) {
-                return;
-            }
-            List<String> path = res.getPath(from.get(), to.get());
-            appendOutput("Путь " + from.get() + " → " + to.get() + ": "
+
+            // --- запрос пути (без изменений) ---
+            Optional<String> fromV = pickVertex("Флойд", "Путь: от");
+            if (fromV.isEmpty()) return;
+            Optional<String> toV = pickVertex("Флойд", "Путь: до");
+            if (toV.isEmpty()) return;
+
+            List<String> path = res.getPath(fromV.get(), toV.get());
+            appendOutput("Путь " + fromV.get() + " → " + toV.get() + ": "
                     + (path == null ? "через отриц. цикл" : path.isEmpty() ? "нет" : String.join(" → ", path)));
             if (path != null && !path.isEmpty()) {
                 highlight.setPath(path, graph.isDirected());
@@ -442,7 +494,6 @@ public class GraphGuiController {
             showError(e.getMessage());
         }
     }
-
     public void runMaxFlow() {
         requireGraph();
         if (!graph.isDirected() || !graph.isWeighted()) {
@@ -551,10 +602,16 @@ public class GraphGuiController {
         }
         FileChooser fc = new FileChooser();
         fc.setTitle("Сохранить обращённый граф");
-        File file = fc.showSaveDialog(window());
-        if (file == null) {
-            return;
+
+        if (lastDirectory != null && lastDirectory.exists()) {
+            fc.setInitialDirectory(lastDirectory);
         }
+
+        File file = fc.showSaveDialog(window());
+        if (file == null) return;
+
+        lastDirectory = file.getParentFile();
+
         try {
             graph.getTranspose().saveToFile(file.getAbsolutePath(), " ");
             appendOutput("Обращение сохранено: " + file.getAbsolutePath());

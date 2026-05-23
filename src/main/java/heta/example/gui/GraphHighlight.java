@@ -83,7 +83,32 @@ public class GraphHighlight {
             mode = Mode.FLOW;
         }
     }
+    public GraphHighlight(GraphHighlight other) {
+        this.mode = other.mode;
+        this.highlightedVertices.addAll(other.getHighlightedVertices());
+        this.highlightedEdges.addAll(other.getHighlightedEdges());
+        this.edgeLabels.putAll(other.getEdgeLabels());
+    }
+    // Методы для добавления элементов (нужны для анимации)
+    public void addHighlightedVertex(String v) {
+        highlightedVertices.add(v);
+    }
 
+    public void addHighlightedEdge(EdgeKey key) {
+        highlightedEdges.add(key);
+    }
+
+    public void addHighlightedVertices(Set<String> vertices) {
+        highlightedVertices.addAll(vertices);
+    }
+
+    public void addHighlightedEdges(Set<EdgeKey> edges) {
+        highlightedEdges.addAll(edges);
+    }
+
+    public void setMode(Mode mode) {
+        this.mode = mode;
+    }
     public Mode getMode() {
         return mode;
     }

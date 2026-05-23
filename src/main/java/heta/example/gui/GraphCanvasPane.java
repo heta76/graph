@@ -66,14 +66,20 @@ public class GraphCanvasPane extends StackPane {
             redraw();
         });
         canvas.setOnMousePressed(e -> {
-            if (e.getButton() == MouseButton.MIDDLE) {
-                panning = true;
-                lastMouseX = e.getX();
-                lastMouseY = e.getY();
-                canvas.setCursor(javafx.scene.Cursor.MOVE);
+            if (e.getButton() == MouseButton.PRIMARY) {
+                Point2D graphPt = toGraphCoords(e.getX(), e.getY());
+                String vertex = findVertexAt(graphPt.getX(), graphPt.getY());
+                if (vertex != null) {
+                    // клик по вершине — перетаскивание вершины
+                    dragVertex = vertex;
+                } else {
+                    // клик по пустому месту — панорамирование
+                    panning = true;
+                    lastMouseX = e.getX();
+                    lastMouseY = e.getY();
+                    canvas.setCursor(javafx.scene.Cursor.MOVE);
+                }
                 e.consume();
-            } else if (e.getButton() == MouseButton.PRIMARY) {
-                handlePress(e);
             }
         });
 
@@ -87,22 +93,41 @@ public class GraphCanvasPane extends StackPane {
                 lastMouseY = e.getY();
                 redraw();
                 e.consume();
-            } else {
-                handleDrag(e);
+            } else if (dragVertex != null && layout != null) {
+                Point2D graphPt = toGraphCoords(e.getX(), e.getY());
+                layout.put(dragVertex, graphPt.getX(), graphPt.getY());
+                if (onVertexMoved != null) {
+                    onVertexMoved.accept(dragVertex, graphPt);
+                }
+                redraw();
+                e.consume();
             }
         });
 
         canvas.setOnMouseReleased(e -> {
-            if (e.getButton() == MouseButton.MIDDLE && panning) {
+            if (panning) {
                 panning = false;
                 canvas.setCursor(javafx.scene.Cursor.DEFAULT);
                 e.consume();
-            } else {
-                handleRelease(e);
+            } else if (dragVertex != null) {
+                dragVertex = null;
+                e.consume();
             }
         });
 
-        canvas.setOnMouseClicked(this::handleClick);
+        canvas.setOnMouseClicked(e -> {
+            if (pendingVertexPlacement != null && e.getButton() == MouseButton.PRIMARY) {
+                Point2D graphPt = toGraphCoords(e.getX(), e.getY());
+                String vertex = findVertexAt(graphPt.getX(), graphPt.getY());
+                if (vertex == null) {
+                    // клик по пустому месту — размещаем новую вершину
+                    pendingVertexPlacement.accept(graphPt);
+                    pendingVertexPlacement = null;
+                    setStyle(null);
+                }
+                e.consume();
+            }
+        });
     }
 
     // ---------- публичные методы ----------
@@ -396,27 +421,27 @@ public class GraphCanvasPane extends StackPane {
     private Point2D toGraphCoords(double x, double y) {
         return new Point2D(x - panX, y - panY);
     }
-    // ---------- обработчики мыши ----------
-    private void handlePress(MouseEvent e) {
-        if (graph == null || e.getButton() != MouseButton.PRIMARY) return;
-        Point2D graphPt = toGraphCoords(e.getX(), e.getY());
-        dragVertex = findVertexAt(graphPt.getX(), graphPt.getY());
-    }
-
-    private void handleDrag(MouseEvent e) {
-        if (dragVertex != null && layout != null) {
-            Point2D graphPt = toGraphCoords(e.getX(), e.getY());
-            layout.put(dragVertex, graphPt.getX(), graphPt.getY());
-            if (onVertexMoved != null) {
-                onVertexMoved.accept(dragVertex, graphPt); // тоже правильнее передать мировые координаты
-            }
-            redraw();
-        }
-    }
-
-    private void handleRelease(MouseEvent e) {
-        dragVertex = null;
-    }
+//    // ---------- обработчики мыши ----------
+//    private void handlePress(MouseEvent e) {
+//        if (graph == null || e.getButton() != MouseButton.PRIMARY) return;
+//        Point2D graphPt = toGraphCoords(e.getX(), e.getY());
+//        dragVertex = findVertexAt(graphPt.getX(), graphPt.getY());
+//    }
+//
+//    private void handleDrag(MouseEvent e) {
+//        if (dragVertex != null && layout != null) {
+//            Point2D graphPt = toGraphCoords(e.getX(), e.getY());
+//            layout.put(dragVertex, graphPt.getX(), graphPt.getY());
+//            if (onVertexMoved != null) {
+//                onVertexMoved.accept(dragVertex, graphPt); // тоже правильнее передать мировые координаты
+//            }
+//            redraw();
+//        }
+//    }
+//
+//    private void handleRelease(MouseEvent e) {
+//        dragVertex = null;
+//    }
 
     private void handleClick(MouseEvent e) {
         if (pendingVertexPlacement != null && e.getButton() == MouseButton.PRIMARY) {
